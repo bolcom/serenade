@@ -8,22 +8,6 @@ edition = "2018"
 name = "serving"
 path = "src/bin/serving.rs"
 
-[[bench]]
-name = "weighted_intersection"
-harness = false
-
-[[bench]]
-name = "weighted_intersection_new"
-harness = false
-
-[[example]]
-name = "weighted_intersection_private_data"
-path = "examples/weighted_intersection_private_data.rs"
-
-[[example]]
-name = "weighted_intersection_private_data_hashmaps"
-path = "examples/weighted_intersection_private_data_hashmaps.rs"
-
 
 [dependencies]
 csv = "1.1"
