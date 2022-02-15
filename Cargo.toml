@@ -1,0 +1,55 @@
+[package]
+name = "serenade_optimized"
+version = "1.0.0"
+authors = ["submission@sigmod2021.org"]
+edition = "2018"
+
+[[bin]]
+name = "serving"
+path = "src/bin/serving.rs"
+
+[[bench]]
+name = "weighted_intersection"
+harness = false
+
+[[bench]]
+name = "weighted_intersection_new"
+harness = false
+
+[[example]]
+name = "weighted_intersection_private_data"
+path = "examples/weighted_intersection_private_data.rs"
+
+[[example]]
+name = "weighted_intersection_private_data_hashmaps"
+path = "examples/weighted_intersection_private_data_hashmaps.rs"
+
+
+[dependencies]
+csv = "1.1"
+rand = "0.8"
+itertools = "0.10"
+actix-web = "3.3"
+rocksdb = {version = "0.16", default-features = false}
+bincode = "1.3"
+chrono = "0.4"
+serde_derive = "1.0"
+serde = "1.0"
+actix-web-prom = "0.5"
+sys-info = "0.9"
+hashbrown = {version = "0.11", features = ["rayon"]}
+tdigest = "0.2"
+rand_pcg = "0.3.0"
+float-cmp = "0.8.0"
+uuid = "0.8"
+md5 = "0.7"
+rayon = "1.5.0"
+dary_heap = "0.2.2"
+num-format = "0.4.0"
+bencher = "0.1"
+avro-rs = {version = "0.13", features = ["snappy"]}
+stats-cli = "2.0.0"
+justconfig = "1.0"
+tpe = "*"
+anyhow = "*"
+indicatif = "*"

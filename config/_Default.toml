@@ -1,0 +1,33 @@
+config_type = "toml"
+
+[server]
+host = "0.0.0.0"
+port = 8080
+num_workers = 4
+
+[log]
+level = "info" # not implemented
+
+[data]
+training_data_path=datasets/retailrocket9_train.txt
+
+[model]
+m_most_recent_sessions = 500
+neighborhood_size_k = 500
+num_items_to_recommend = 21
+max_items_in_session = 2
+
+[logic]
+enable_business_logic = "false"
+
+[hyperparam]
+training_data_path = "datasets/retailrocket9_train.txt"
+test_data_path = "datasets/retailrocket9_test.txt"
+num_iterations = 12
+save_records = true
+out_path = "results.csv"
+enable_business_logic = false
+# these configs below are not working yet
+n_most_recent_sessions_choices = [100, 500, 1000, 2500]
+neighborhood_size_k_choices = [50, 100, 500, 1000, 1500]
+last_items_in_session_choices = [1, 2, 3, 5, 7, 10]
