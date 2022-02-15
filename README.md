@@ -139,5 +139,5 @@ The returned json object is a list with recommended items.
 
 
 # License
-This project is licensed under the terms of the [Apache 2.0 license](LICENSE).
+This project is licensed under the terms of the [Apache 2.0 license](LICENSE.md).
 
