@@ -1,5 +1,6 @@
-# Session Based Recommendations
-This repository contains code for session-based recommender system Serenade.
+# Serenade: Low-Latency Session-Based Recommendations
+<img src="https://icai.ai/wp-content/uploads/2020/01/AIRLabAmsterdam-10-6-gecomprimeerd-transparant.png" width="250" align="right">
+This repository contains the official code for session-based recommender system Serenade.
 It learns users' preferences by capturing the short-term and sequential patterns from the evolution of user
 behaviors and predicts interesting next items with low latency.
 
@@ -123,3 +124,20 @@ except Exception as err:
 [72916, 84895, 92210, 176166, 379693, 129343, 321706, 257070]
 ```
 The returned json object is a list with recommended items.
+
+
+
+# Citation
+> Serenade - Low-Latency Session-Based Recommendation in e-Commerce at Scale
+
+    @article{Kersbergen2022SerenadeScale,
+        title = {{Serenade - Low-Latency Session-Based Recommendation in e-Commerce at Scale}},
+        year = {2022},
+        journal = {SIGMOD},
+        author = {Kersbergen, Barrie and Sprangers, Olivier and Schelter, Sebastian}
+    }
+
+
+# License
+This project is licensed under the terms of the [Apache 2.0 license](LICENSE).
+
