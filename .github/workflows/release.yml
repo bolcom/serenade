@@ -44,7 +44,7 @@ jobs:
           override: true
 
       - name: Build
-        run: cargo build --all --release && strip target/release/tpe_hyperparameter_optm && strip target/release/serving && mv target/release/tpe_hyperparameter_optm_amd64 && mv target/release/serving target/release/serving_amd64
+        run: cargo build --all --release && strip target/release/tpe_hyperparameter_optm && strip target/release/serving && mv target/release/tpe_hyperparameter_optm target/release/tpe_hyperparameter_optm_amd64 && mv target/release/serving target/release/serving_amd64
 
       - name: Release
         uses: softprops/action-gh-release@v1
