@@ -21,7 +21,7 @@ Train and testset can be created from historical user-item click data. Each row 
 * ```ItemId``` the ID of the interacted item. Format: Int64
 * ```Time``` the time when the user-item interaction occurred. In epoch seconds: Format F32
 
-The last 24 hours in the historical data can be used as test-set while the rest of the sessions can be used as the training-set and written as plain text using a <TAB> as field separator.
+The last 24 hours in the historical data can be used as test-set while the rest of the sessions can be used as the training-set and written as plain text using a ```'\t'``` as field separator.
 This is an example of a training data CSV file train.txt:
 ```
 SessionId	ItemId	Time
