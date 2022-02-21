@@ -2,39 +2,62 @@
 <img src="https://icai.ai/wp-content/uploads/2020/01/AIRLabAmsterdam-10-6-gecomprimeerd-transparant.png" width="250" align="right">
 This repository contains the official code for session-based recommender system Serenade.
 It learns users' preferences by capturing the short-term and sequential patterns from the evolution of user
-behaviors and predicts interesting next items with low latency.
+behaviors and predicts interesting next items with low latency with support for millions of distinct items.
 
 # Quick guide: getting started with Serenade.
 
 ## Table of contents
-1. [Find the best hyperparameter values](#find-hyperparams)
-2. [Configure Serenade to use the hyperparameter values](#update-config)
-3. [Start the Serenade service](#start-service)
-4. [Retrieve recommendations using python](#retrieve-recommendations)
-5. [Research experiments](#research-experiments)
+1. [Train- and testset](#dataset)
+2. [Find the best hyperparameter values](#find-hyperparams)
+3. [Configure Serenade to use the hyperparameter values](#update-config)
+4. [Start the Serenade service](#start-service)
+5. [Retrieve recommendations using python](#retrieve-recommendations)
+6. [Research experiments](#research-experiments)
+
+
+### Train- and testset <a name="dataset"></a>
+Train and testset can be created from historical user-item click data. Each row in the training- or test set should contain an historical user-item interaction event with the following fields:
+* ```SessionId``` the ID of the session. Format: Int64
+* ```ItemId``` the ID of the interacted item. Format: Int64
+* ```Time``` the time when the user-item interaction occurred. In epoch seconds: Format F32
+
+The last 24 hours in the historical data can be used as test-set while the rest of the sessions can be used as the training-set and written as plain text using a <TAB> as field separator.
+This is an example of a training data CSV file train.txt:
+```
+SessionId	ItemId	Time
+77	453279	1434846304
+77	321706	1434846392
+77	257070	1434846434
+85	52383	1434987517
+```
+
+This is an example of test data test.txt:
+```
+SessionId	ItemId	Time
+897	91755	1435330427
+897	91755	1435330595
+1011	387377	1435296520
+```
 
 This guide assumes you have the following:
 - Binary executables for your platform (mac, linux and windows are supported):
 ```
 serving
-hyperparameter_search
+tpe_hyperparameter_optm
 ```
 - A configuration file `Default.toml` (an example can be found at `config/_Default.toml`);
-- A csv file with training data `retailrocket9_train.txt` in `/datasets/`.
-- A csv file with test data `retailrocket9_test.txt` in `/datasets/`.
+- A csv file with training data `train.txt` in `/datasets/`.
+- A csv file with test data `test.txt` in `/datasets/`.
 
 ### Find the best hyperparameter values <a name="find-hyperparams"></a>
-We explored different possibilities for optimizing the hyperparameters, and the best performance was obtained using the Tree-Structured Parzen Estimator (TPE), for which we give instructions in the following subsection.
+The next step is finding the hyperparameters for the train and test-datasets. 
+Serenade uses Tree-Structured Parzen Estimator (TPE) for finding the hyperparameters. TPE achieves low validation errors compared to Exhaustive Grid Search ([Bergstra et al](http://proceedings.mlr.press/v28/bergstra13.pdf)).
 
-#### Tree-Structured Parzen Estimator (TPE)
-
-* TPE achieves low validation errors when compared to Exhaustive Grid Search ([Bergstra et al](http://proceedings.mlr.press/v28/bergstra13.pdf)).
-* It has [an implementation available in Rust (link)](https://docs.rs/tpe).
-* The config file still does not handle the hyperparameters' values, so, for now, please change the values in lines 23-25 of `src/bin/tpe_hyperparameter_optm.rs`. For the other config parameters, please edit/review the config file (`config/_Default.toml`).
-* Running example:
+* The hyperparameter search can be started using:
 ```bash
-./target/<compile_dir>/tpe_hyperparameter_optm config/_Default.toml 
+./tpe_hyperparameter_optm config/_Default.toml 
 ```
+note: At this moment the hyper-parameter value ranges in the config file are ignored and Serenade uses the hardcoded ranges defined in lines 23-25 of `src/bin/tpe_hyperparameter_optm.rs`. The hardcoded ranges are commonly used and should give good results. 
 
 The results will be printed out in the terminal, for example:
 ```
@@ -51,7 +74,7 @@ out_path = "results.csv"
 ```
 
 ### Configure Serenade to use the hyperparameter values <a name="update-config"></a>
-We now update the configuration file `Default.toml` to use the hyperparameter values and set the training_data_path with the location of the retailrocket9_train.txt.
+We now update the configuration file `Default.toml` to use the hyperparameter values and set the training_data_path with the location of the ```train.txt```.
 This is an example of the full configuration file
 ```
 config_type = "toml"
@@ -65,7 +88,7 @@ num_workers = 4
 level = "info" # not implemented
 
 [data]
-training_data_path=/datasets/retailrocket9_train.txt
+training_data_path=/datasets/train.txt
 
 [model]
 neighborhood_size_k = 1000
@@ -77,8 +100,8 @@ num_items_to_recommend = 21
 enable_business_logic = "false"
 
 [hyperparam]
-training_data_path = "datasets/retailrocket9_train.txt"
-test_data_path = "datasets/retailrocket9_test.txt"
+training_data_path = "datasets/train.txt"
+test_data_path = "datasets/test.txt"
 num_iterations = 12
 save_records = true
 out_path = "results.csv"
