@@ -1,7 +1,7 @@
 use serenade_optimized::hyperparameter::hyperparamgrid::HyperParamGrid;
 use serenade_optimized::metrics::mrr::Mrr;
 use serenade_optimized::metrics::SessionMetric;
-use serenade_optimized::vmisknn::vmis_index::OfflineIndex;
+use serenade_optimized::vmisknn::vmis_index::VMISIndex;
 use serenade_optimized::{io, vmisknn};
 use std::collections::HashMap;
 
@@ -49,7 +49,7 @@ fn main() {
         let enable_business_logic = false;
 
         if neighborhood_size_k <= m_most_recent_sessions {
-            let vsknn_index = OfflineIndex::new_from_csv(&*path_to_training, m_most_recent_sessions);
+            let vmis_index = VMISIndex::new_from_csv(&*path_to_training, m_most_recent_sessions);
             let ordered_test_sessions = io::read_test_data_evolving(&*test_data_file);
             let mut mymetric = Mrr::new(20);
             ordered_test_sessions
@@ -64,7 +64,7 @@ fn main() {
                         };
                         let session: &[u64] = &evolving_session_items[start_index..session_state];
                         let recommendations = vmisknn::predict(
-                            &vsknn_index,
+                            &vmis_index,
                             &session,
                             neighborhood_size_k,
                             m_most_recent_sessions,

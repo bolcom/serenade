@@ -10,7 +10,7 @@ use web::Data;
 pub async fn internal(config: Data<SharedHandlesAndConfig>) -> HttpResponse {
     let mut html = "<html>serenade: realtime session based recommendations.<br />".to_string();
 
-    let data_stats = &config.vsknn_index.training_data_stats;
+    let data_stats = &config.vmis_index.training_data_stats;
     html.push_str("<h3>Training data</h3>");
     html.push_str("Loaded: ");
     html.push_str(&*data_stats.descriptive_name);

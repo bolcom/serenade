@@ -1,6 +1,6 @@
 use crate::{io, vmisknn};
 
-use crate::vmisknn::vmis_index::OfflineIndex;
+use crate::vmisknn::vmis_index::VMISIndex;
 use crate::metrics::mrr::Mrr;
 use crate::metrics::SessionMetric;
 
@@ -13,7 +13,7 @@ pub fn objective(
     last_items_in_session: i32,
     enable_business_logic: bool) -> f64 {
     
-    let offline_index = OfflineIndex::new_from_csv(&*path_to_training, n_most_recent_sessions as usize);
+    let vmis_index = VMISIndex::new_from_csv(&*path_to_training, n_most_recent_sessions as usize);
 
     let ordered_test_sessions = io::read_test_data_evolving(&*test_data_file);
 
@@ -32,7 +32,7 @@ pub fn objective(
             };
             let session: &[u64] = &evolving_session_items[start_index..session_state];
             let recommendations = vmisknn::predict(
-                &offline_index,
+                &vmis_index,
                 &session,
                 neighborhood_size_k as usize,
                 n_most_recent_sessions as usize,

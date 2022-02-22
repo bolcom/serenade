@@ -25,7 +25,7 @@ pub struct ProductAttributes {
     pub(crate) is_for_sale: bool,
 }
 
-pub struct OfflineIndex {
+pub struct VMISIndex {
     pub(crate) item_to_top_sessions_ordered: HashMap<u64, Vec<u32>>,
     pub(crate) session_to_max_time_stamp: Vec<u32>,
     pub(crate) item_to_idf_score: HashMap<u64, f64>,
@@ -34,7 +34,7 @@ pub struct OfflineIndex {
     pub(crate) item_to_product_attributes: HashMap<u64, ProductAttributes>,
 }
 
-impl OfflineIndex {
+impl VMISIndex {
     pub fn new_from_csv(path_to_training: &str, m_most_recent_sessions: usize) -> Self {
         let start_time = Instant::now();
         println!(
@@ -71,7 +71,7 @@ impl OfflineIndex {
             start_time.elapsed().as_micros()
         );
 
-        OfflineIndex {
+        VMISIndex {
             item_to_top_sessions_ordered,
             session_to_max_time_stamp: historical_sessions_max_time_stamp,
             item_to_idf_score,
@@ -301,7 +301,7 @@ impl OfflineIndex {
             (session_to_items_sorted, timestamps)
         }
 
-        OfflineIndex {
+        VMISIndex {
             item_to_top_sessions_ordered,
             session_to_max_time_stamp,
             item_to_idf_score,
@@ -312,7 +312,7 @@ impl OfflineIndex {
     }
 }
 
-impl SimilarityComputationNew for OfflineIndex {
+impl SimilarityComputationNew for VMISIndex {
     fn items_for_session(&self, session: &u32) -> &[u64] {
         &self.session_to_items_sorted[*session as usize]
     }

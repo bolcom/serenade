@@ -2,7 +2,7 @@ use serenade_optimized::{io, vmisknn};
 
 use serenade_optimized::metrics::mrr::Mrr;
 use serenade_optimized::metrics::SessionMetric;
-use serenade_optimized::vmisknn::vmis_index::OfflineIndex;
+use serenade_optimized::vmisknn::vmis_index::VMISIndex;
 
 fn main() {
     // hyper-parameters
@@ -22,7 +22,7 @@ fn main() {
         .expect("Test data file not specified!");
     println!("test_data_file:{}", test_data_file);
 
-    let offline_index = OfflineIndex::new_from_csv(&*path_to_training, n_most_recent_sessions);
+    let vmis_index = VMISIndex::new_from_csv(&*path_to_training, n_most_recent_sessions);
 
     let ordered_test_sessions = io::read_test_data_evolving(&*test_data_file);
 
@@ -41,7 +41,7 @@ fn main() {
                 };
                 let session: &[u64] = &evolving_session_items[start_index..session_state];
                 let recommendations = vmisknn::predict(
-                    &offline_index,
+                    &vmis_index,
                     &session,
                     neighborhood_size_k,
                     n_most_recent_sessions,

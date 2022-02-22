@@ -27,7 +27,7 @@ pub async fn v1_recommend(
     let session_id_digest = md5::compute(&query.session_id);
     let evolving_session_id = Builder::from_bytes(session_id_digest.0).build().as_u128();
 
-    let vsknn_index = data.vsknn_index.as_ref();
+    let vmis_index = data.vmis_index.as_ref();
     let session_store = data.session_store.as_ref();
 
     let k = data.neighborhood_size_k;
@@ -53,7 +53,7 @@ pub async fn v1_recommend(
         vec![most_recent_item]
     };
 
-    let recommendations = vmisknn::predict(vsknn_index, &session_items, k, m, how_many, enable_business_logic);
+    let recommendations = vmisknn::predict(vmis_index, &session_items, k, m, how_many, enable_business_logic);
 
     let recommended_items: Vec<u64> = recommendations
         .into_sorted_vec()

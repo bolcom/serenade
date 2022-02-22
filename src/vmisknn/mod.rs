@@ -210,12 +210,12 @@ pub fn predict<I: SimilarityComputationNew + Send + Sync>(
 }
 
 #[cfg(test)]
-mod offline_index_test {
+mod vmisknn_test {
     use chrono::NaiveDateTime;
 
     use crate::dataframeutils::TrainingDataStats;
-    use crate::vmisknn::offline_index::prepare_hashmap;
-    use crate::vmisknn::offline_index::OfflineIndex;
+    use crate::vmisknn::vmis_index::prepare_hashmap;
+    use crate::vmisknn::vmis_index::VMISIndex;
 
     use super::*;
     use dary_heap::OctonaryHeap;
@@ -276,7 +276,7 @@ mod offline_index_test {
             training_data_stats.qty_events_p99_5 as usize,
         );
 
-        let vsknn_index = OfflineIndex {
+        let vmis_index = VMISIndex {
             item_to_top_sessions_ordered: item_to_top_sessions_ordered,
             session_to_max_time_stamp: historical_sessions_max_time_stamp,
             item_to_idf_score: item_to_idf_score,
@@ -287,7 +287,7 @@ mod offline_index_test {
 
         let session_items = vec![920005];
 
-        let recommendations = predict(&vsknn_index, &session_items, k, m, how_many, enable_business_logic);
+        let recommendations = predict(&vmis_index, &session_items, k, m, how_many, enable_business_logic);
 
         // we expect the four other item_ids to be recommended
         assert_eq!(4, recommendations.len());

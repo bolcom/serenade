@@ -6,11 +6,11 @@ use rayon::prelude::*;
 use std::sync::Arc;
 
 use crate::sessions::RocksDBSessionStore;
-use crate::vmisknn::vmis_index::OfflineIndex;
+use crate::vmisknn::vmis_index::VMISIndex;
 
 pub struct SharedHandlesAndConfig {
     pub session_store: Arc<RocksDBSessionStore>,
-    pub vsknn_index: Arc<OfflineIndex>,
+    pub vmis_index: Arc<VMISIndex>,
     pub m_most_recent_sessions: usize,
     pub neighborhood_size_k: usize,
     pub num_items_to_recommend: usize,

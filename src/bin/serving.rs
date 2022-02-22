@@ -17,7 +17,7 @@ use serenade_optimized::dataframeutils::SharedHandlesAndConfig;
 use serenade_optimized::endpoints::index_resource::internal;
 use serenade_optimized::endpoints::recommend_resource::v1_recommend;
 use serenade_optimized::sessions;
-use serenade_optimized::vmisknn::vmis_index::OfflineIndex;
+use serenade_optimized::vmisknn::vmis_index::VMISIndex;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -33,12 +33,12 @@ async fn main() -> std::io::Result<()> {
     let enable_business_logic = config.logic.enable_business_logic;
 
     let training_data_path = Path::new(&config.data.training_data_path);
-    let vsknn = if training_data_path.is_dir() {
+    let vmis_index = if training_data_path.is_dir() {
         // By default we use an index that is computed offline on billions of user-item interactions.
-        Arc::new(OfflineIndex::new(&config.data.training_data_path))
+        Arc::new(VMISIndex::new(&config.data.training_data_path))
     } else if training_data_path.is_file() {
         // The following line creates an index directly from a csv file as input.
-        Arc::new(OfflineIndex::new_from_csv(
+        Arc::new(VMISIndex::new_from_csv(
             &config.data.training_data_path,
             config.model.m_most_recent_sessions,
         ))
@@ -60,7 +60,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         let handles_and_config = SharedHandlesAndConfig {
             session_store: db.clone(),
-            vsknn_index: vsknn.clone(),
+            vmis_index: vmis_index.clone(),
             m_most_recent_sessions,
             neighborhood_size_k,
             num_items_to_recommend,
