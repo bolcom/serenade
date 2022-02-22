@@ -16,7 +16,7 @@ behaviors and predicts interesting next items with low latency with support for 
 
 
 ### Train- and testset <a name="dataset"></a>
-Train and testset can be created from historical user-item click data. Each row in the training- or test set should contain an historical user-item interaction event with the following fields:
+A train- and testset must be created from historical user-item click data, outside of Serenade. Each row in the training- or test set should contain an historical user-item interaction event with the following fields:
 * ```SessionId``` the ID of the session. Format: Int64
 * ```ItemId``` the ID of the interacted item. Format: Int64
 * ```Time``` the time when the user-item interaction occurred. In epoch seconds: Format F32
