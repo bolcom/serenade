@@ -6,7 +6,7 @@ use rayon::prelude::*;
 use std::sync::Arc;
 
 use crate::sessions::RocksDBSessionStore;
-use crate::vmisknn::offline_index::OfflineIndex;
+use crate::vmisknn::vmis_index::OfflineIndex;
 
 pub struct SharedHandlesAndConfig {
     pub session_store: Arc<RocksDBSessionStore>,

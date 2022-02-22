@@ -2,7 +2,7 @@ use serenade_optimized::{io, vmisknn};
 
 use serenade_optimized::metrics::mrr::Mrr;
 use serenade_optimized::metrics::SessionMetric;
-use serenade_optimized::vmisknn::offline_index::OfflineIndex;
+use serenade_optimized::vmisknn::vmis_index::OfflineIndex;
 
 fn main() {
     // hyper-parameters

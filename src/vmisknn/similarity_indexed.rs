@@ -1,6 +1,6 @@
 extern crate hashbrown;
 
-use crate::vmisknn::offline_index::ProductAttributes;
+use crate::vmisknn::vmis_index::ProductAttributes;
 use crate::vmisknn::SessionScore;
 use std::collections::BinaryHeap;
 

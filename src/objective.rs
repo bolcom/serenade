@@ -1,6 +1,6 @@
 use crate::{io, vmisknn};
 
-use crate::vmisknn::offline_index::OfflineIndex;
+use crate::vmisknn::vmis_index::OfflineIndex;
 use crate::metrics::mrr::Mrr;
 use crate::metrics::SessionMetric;
 

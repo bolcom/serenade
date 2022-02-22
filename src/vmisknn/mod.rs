@@ -5,15 +5,12 @@ use hashbrown::hash_map::Entry;
 use hashbrown::HashMap;
 
 use crate::vmisknn::similarity_indexed::SimilarityComputationNew;
-use crate::vmisknn::offline_index::ProductAttributes;
+use crate::vmisknn::vmis_index::ProductAttributes;
 
 pub mod vsknn_index;
-pub mod vmisknn_index_noopt;
-pub mod vmisknn_index;
 pub mod similarity_hashed;
 pub mod similarity_indexed;
-pub mod offline_index;
-pub mod tree_index;
+pub mod vmis_index;
 
 #[derive(PartialEq, Debug)]
 pub struct SessionScore {

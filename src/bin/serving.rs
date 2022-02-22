@@ -17,7 +17,7 @@ use serenade_optimized::dataframeutils::SharedHandlesAndConfig;
 use serenade_optimized::endpoints::index_resource::internal;
 use serenade_optimized::endpoints::recommend_resource::v1_recommend;
 use serenade_optimized::sessions;
-use serenade_optimized::vmisknn::offline_index::OfflineIndex;
+use serenade_optimized::vmisknn::vmis_index::OfflineIndex;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
