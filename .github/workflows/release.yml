@@ -1,10 +1,12 @@
 name: Release
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
 
 jobs:
   build:
@@ -30,15 +32,36 @@ jobs:
           default: true
           override: true
 
-      - name: Build
-        run: cargo build --all --release && strip target/release/tpe_hyperparameter_optm && strip target/release/serving && mv target/release/tpe_hyperparameter_optm tpe_hyperparameter_optm_amd64 && mv target/release/serving serving_amd64
+      - name: Build target
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: --release --target ${{ matrix.target }}
 
-      - name: Release
+      - name: Release tpe_hyperparameter_optm
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release          
+          tar czvf ../../../tpe_hyperparameter_optm-${{ matrix.target }}.tar.gz tpe_hyperparameter_optm
+          cd -
+      - name: Publish
         uses: softprops/action-gh-release@v1
         with:
-          files: |            
-            tpe_hyperparameter_optm_amd64
-            serving_amd64
+            files: 'tpe_hyperparameter_optm*'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Release serving
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release          
+          tar czvf ../../../serving-${{ matrix.target }}.tar.gz serving
+          cd -
+      - name: Publish
+        uses: softprops/action-gh-release@v1
+        with:
+            files: 'serving*'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -66,15 +89,35 @@ jobs:
           default: true
           override: true
 
-      - name: Build for mac
-        run: cargo build --all --release && strip target/release/tpe_hyperparameter_optm && strip target/release/serving && mv target/release/tpe_hyperparameter_optm tpe_hyperparameter_optm_darwin && mv target/release/serving serving_darwin
-
-      - name: Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
+        - name: Build target
+        uses: actions-rs/cargo@v1
         with:
-          files: |
-            tpe_hyperparameter_optm_darwin
-            serving_darwin
+          use-cross: true
+          command: build
+          args: --release --target ${{ matrix.target }}
+
+      - name: Release tpe_hyperparameter_optm
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release          
+          tar czvf ../../../tpe_hyperparameter_optm-${{ matrix.target }}.tar.gz tpe_hyperparameter_optm
+          cd -
+      - name: Publish
+        uses: softprops/action-gh-release@v1
+        with:
+            files: 'tpe_hyperparameter_optm*'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Release serving
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release          
+          tar czvf ../../../serving-${{ matrix.target }}.tar.gz serving
+          cd -
+      - name: Publish
+        uses: softprops/action-gh-release@v1
+        with:
+            files: 'serving*'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
