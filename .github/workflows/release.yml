@@ -14,16 +14,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
+        uses: actions/checkout@v1
 
-      - name: Install latest rust toolchain
+      - name: Install rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          default: true
+          profile: minimal
           override: true
+          target: ${{ matrix.target }}
 
       - name: Build target
         uses: actions-rs/cargo@v1
@@ -62,12 +61,11 @@ jobs:
     runs-on: macos-latest
 
     steps:
+    
       - name: Checkout
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
-
-      - name: Install latest rust toolchain
+        uses: actions/checkout@v1
+        
+      - name: Install rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -75,7 +73,7 @@ jobs:
           default: true
           override: true
 
-        - name: Build target
+      - name: Build target
         uses: actions-rs/cargo@v1
         with:
           use-cross: true
