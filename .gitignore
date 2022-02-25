@@ -25,5 +25,3 @@ sessions.db/
 indices/
 dataset*
 *.csv
-hyperparameter_search
-serving

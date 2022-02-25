@@ -33,68 +33,47 @@ jobs:
         shell: bash
         run: |
           cd target/release
-          tar czvf ../../tpe_hyperparameter_optm-amd64.tar.gz tpe_hyperparameter_optm
-          tar czvf ../../serving-amd64.tar.gz serving
+          tar czvf ../../binaries-amd64.tar.gz tpe_hyperparameter_optm serving
           cd -
 
       - name: Publish
         uses: softprops/action-gh-release@v1
         with:
-            files: |
-              'tpe_hyperparameter_optm*'
-              'serving*'
+          files: 'binaries-amd64.tar.gz'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # build-mac:
-  #   if: startsWith(github.ref, 'refs/tags/')
-  #   runs-on: macos-latest
-  #   strategy: 
-  #     matrix:
-  #       target: x86_64-apple-darwin
-
-  #   steps:
+  build-mac:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: macos-latest
     
-  #     - name: Checkout
-  #       uses: actions/checkout@v1
+    steps:    
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
         
-  #     - name: Install rust
-  #       uses: actions-rs/toolchain@v1
-  #       with:
-  #         toolchain: stable
-  #         target: x86_64-apple-darwin
-  #         default: true
-  #         override: true
+      - name: Install latest rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-apple-darwin
+          default: true
+          override: true
 
-  #     - name: Build target
-  #       uses: actions-rs/cargo@v1
-  #       with:
-  #         use-cross: true
-  #         command: build
-  #         args: --release --target ${{ matrix.target }}
+      - name: Build
+        run: cargo build --all --release
 
-  #     - name: Release tpe_hyperparameter_optm
-  #       shell: bash
-  #       run: |
-  #         cd target/${{ matrix.target }}/release          
-  #         tar czvf ../../../tpe_hyperparameter_optm-${{ matrix.target }}.tar.gz tpe_hyperparameter_optm
-  #         cd -
-  #     - name: Publish
-  #       uses: softprops/action-gh-release@v1
-  #       with:
-  #           files: 'tpe_hyperparameter_optm*'
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-  #     - name: Release serving
-  #       shell: bash
-  #       run: |
-  #         cd target/${{ matrix.target }}/release          
-  #         tar czvf ../../../serving-${{ matrix.target }}.tar.gz serving
-  #         cd -
-  #     - name: Publish
-  #       uses: softprops/action-gh-release@v1
-  #       with:
-  #           files: 'serving*'
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Release binaries
+        shell: bash
+        run: |
+          cd target/release
+          tar czvf ../../binaries-darwin.tar.gz tpe_hyperparameter_optm serving
+          cd -
+
+      - name: Publish
+        uses: softprops/action-gh-release@v1
+        with:
+          files: 'binaries-darwin.tar.gz'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
