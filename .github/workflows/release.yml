@@ -12,51 +12,37 @@ jobs:
   build:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
-    strategy: 
-      matrix:
-        target: [aarch64-unknown-linux-gnu, i686-unknown-linux-gnu, i686-unknown-linux-musl, x86_64-unknown-linux-gnu , x86_64-unknown-linux-musl]    
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
 
-      - name: Install rust
+      - name: Install latest rust toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          profile: minimal
+          default: true
           override: true
-          target: ${{ matrix.target }}
 
-      - name: Build target
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: true
-          command: build
-          args: --release --target ${{ matrix.target }}
+      - name: Build
+        run: cargo build --all --release
 
-      - name: Release tpe_hyperparameter_optm
+      - name: Release binaries
         shell: bash
         run: |
-          cd target/${{ matrix.target }}/release          
-          tar czvf ../../../tpe_hyperparameter_optm-${{ matrix.target }}.tar.gz tpe_hyperparameter_optm
+          cd target/release
+          tar czvf ../../../tpe_hyperparameter_optm-amd64.tar.gz tpe_hyperparameter_optm
+          tar czvf ../../../serving-amd64.tar.gz serving
           cd -
+
       - name: Publish
         uses: softprops/action-gh-release@v1
         with:
-            files: 'tpe_hyperparameter_optm*'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Release serving
-        shell: bash
-        run: |
-          cd target/${{ matrix.target }}/release          
-          tar czvf ../../../serving-${{ matrix.target }}.tar.gz serving
-          cd -
-      - name: Publish
-        uses: softprops/action-gh-release@v1
-        with:
-            files: 'serving*'
+            files: |
+              'tpe_hyperparameter_optm*'
+              'serving*'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
