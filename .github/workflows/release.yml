@@ -123,7 +123,7 @@ jobs:
         shell: powershell
         run: |
           $compress = @{
-            Path = ".\target\release\${{ env.TPE_HPO_BIN }}", ".\target\release\${{ env.SERVING_BIN }}"
+            Path = "D:\a\serenade\serenade\target\release\${{ env.TPE_HPO_BIN }}.exe", "D:\a\serenade\serenade\target\release\${{ env.SERVING_BIN }}.exe"
             CompressionLevel = "Fastest"
             DestinationPath = ".\${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.version }}-${{ env.WINDOWS_TARGET }}.Zip"
           }
