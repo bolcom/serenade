@@ -6,10 +6,13 @@ on:
       - 'v*.*.*'
 
 env:
+  TPE_HPO_BIN: 'tpe_hyperparameter_optm'
+  SERVING_BIN: 'serving'
   RELEASE_NAME: 'Serenade'
-  WINDOWS_TARGET: 'x86_64-Windows.zip'
-  MACOS_TARGET: 'x86_64-MacOSX.tar.gz'
-  LINUX_TARGET: 'x86_64-Ubuntu.tar.gz'
+  WINDOWS_TARGET: x86_64-pc-windows-msvc.zip
+  MACOS_TARGET: x86_64-apple-darwin.tar.gz
+  LINUX_AMD64_TARGET: x86_64-unknown-linux-musl.tar.gz
+  LINUX_ARM64_TARGET: aarch64-unknown-linux-musl.tar.gz
 
 jobs:
   build:
@@ -40,13 +43,13 @@ jobs:
         shell: bash
         run: |
           cd target/release
-          tar czvf ../../${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.LINUX_TARGET }} tpe_hyperparameter_optm serving
+          tar czvf ../../${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.LINUX_AMD64_TARGET }} ${{ env.TPE_HPO_BIN }} ${{ env.SERVING_BIN }}
           cd -
 
       - name: Publish
         uses: softprops/action-gh-release@v1
         with:
-          files: ${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.LINUX_TARGET }}
+          files: ${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.LINUX_AMD64_TARGET }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -79,7 +82,7 @@ jobs:
         shell: bash
         run: |
           cd target/release
-          tar czvf ../../${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.MACOS_TARGET }} tpe_hyperparameter_optm serving
+          tar czvf ../../${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.MACOS_TARGET }} ${{ env.TPE_HPO_BIN }} ${{ env.SERVING_BIN }}
           cd -
 
       - name: Publish
@@ -89,43 +92,46 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # build-win:
-  #   if: startsWith(github.ref, 'refs/tags/')
-  #   runs-on: ubuntu-latest
-  #   strategy:
-  #     matrix: 
-  #       target: x86_64-pc-windows-gnu
+  build-win:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: windows-latest
 
-  #   steps:
-  #     - name: Get version
-  #       id: get_version
-  #       run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+    steps:
+      - name: Install 7Zip PowerShell Module
+        shell: powershell
+        run: Install-Module 7Zip4PowerShell -Force -Verbose
 
-  #     - name: Checkout
-  #       uses: actions/checkout@v2
-  #       with:
-  #         fetch-depth: 0
+      - id: get_version
+        uses: battila7/get-version-action@v2
 
-  #     - name: Install latest rust toolchain
-  #       uses: actions-rs/toolchain@v1
-  #       with:
-  #         toolchain: stable
-  #         default: true
-  #         override: true
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
 
-  #     - name: Build
-  #       run: cargo build --all --release
+      - name: Install latest rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+          override: true
 
-  #     - name: Release binaries
-  #       shell: bash
-  #       run: |
-  #         cd target/release
-  #         zip ../../${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.WINDOWS_TARGET }} tpe_hyperparameter_optm serving
-  #         cd -
+      - name: Build
+        run: cargo build --all --release
 
-  #     - name: Publish
-  #       uses: softprops/action-gh-release@v1
-  #       with:
-  #         files: ${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.WINDOWS_TARGET }}
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Release binaries
+        shell: bash
+        run: |
+          $compress = @{
+            Path = "target\release\", "C:\Reference\Images\*.vsd"
+            CompressionLevel = "Fastest"
+            DestinationPath = "${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.WINDOWS_TARGET }}.Zip"
+          }
+          Compress-Archive @compress
+
+      - name: Publish
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.WINDOWS_TARGET }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
