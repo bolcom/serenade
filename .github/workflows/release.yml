@@ -120,18 +120,18 @@ jobs:
         run: cargo build --all --release
 
       - name: Release binaries
-        shell: bash
+        shell: powershell
         run: |
           $compress = @{
-            Path = "target\release\", "C:\Reference\Images\*.vsd"
+            Path = "target\release\${{ env.TPE_HPO_BIN }}", "target\release\${{ env.SERVING_BIN }}"
             CompressionLevel = "Fastest"
-            DestinationPath = "${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.WINDOWS_TARGET }}.Zip"
+            DestinationPath = "${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.version }}-${{ env.WINDOWS_TARGET }}.Zip"
           }
           Compress-Archive @compress
 
       - name: Publish
         uses: softprops/action-gh-release@v1
         with:
-          files: ${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.WINDOWS_TARGET }}
+          files: ${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.version }}-${{ env.WINDOWS_TARGET }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
