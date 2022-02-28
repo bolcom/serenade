@@ -6,9 +6,10 @@ on:
       - 'v*.*.*'
 
 env:
-  WINDOWS_TARGET: 'Serenade-1.0.1-x86_64-Windows.zip'
-  MACOS_TARGET: 'Serenade-1.0.1-x86_64-MacOSX.tar.gz'
-  LINUX_TARGET: 'Serenade-1.0.1-x86_64-Ubuntu.tar.gz'
+  RELEASE_NAME: 'Serenade'
+  WINDOWS_TARGET: 'x86_64-Windows.zip'
+  MACOS_TARGET: 'x86_64-MacOSX.tar.gz'
+  LINUX_TARGET: 'x86_64-Ubuntu.tar.gz'
 
 jobs:
   build:
@@ -16,6 +17,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Get version
+        id: get_version
+        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+
       - name: Checkout
         uses: actions/checkout@v2
         with:
@@ -35,13 +40,13 @@ jobs:
         shell: bash
         run: |
           cd target/release
-          tar czvf ../../${{ env.LINUX_TARGET }} tpe_hyperparameter_optm serving
+          tar czvf ../../${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.LINUX_TARGET }} tpe_hyperparameter_optm serving
           cd -
 
       - name: Publish
         uses: softprops/action-gh-release@v1
         with:
-          files: ${{ env.LINUX_TARGET }}
+          files: ${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.LINUX_TARGET }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -70,12 +75,12 @@ jobs:
         shell: bash
         run: |
           cd target/release
-          tar czvf ../../${{ env.MACOS_TARGET }} tpe_hyperparameter_optm serving
+          tar czvf ../../${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.MACOS_TARGET }} tpe_hyperparameter_optm serving
           cd -
 
       - name: Publish
         uses: softprops/action-gh-release@v1
         with:
-          files: ${{ env.MACOS_TARGET }}
+          files: ${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.MACOS_TARGET }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
