@@ -40,7 +40,7 @@ SessionId	ItemId	Time
 ```
 
 This guide assumes you have the following:
-- Binary executables for your platform (mac, linux and windows are supported):
+- [Binary executables for your platform (MacOS, Linux and Windows are supported)](https://github.com/bolcom/serenade/releases):
 ```
 serving
 tpe_hyperparameter_optm
