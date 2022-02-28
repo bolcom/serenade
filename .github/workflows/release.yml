@@ -1,12 +1,14 @@
 name: Release
 
 on:
-  pull_request:
   push:
-    branches:
-      - main
     tags:
       - 'v*.*.*'
+
+env:
+  WINDOWS_TARGET: 'Serenade-1.0.1-x86_64-Windows.zip'
+  MACOS_TARGET: 'Serenade-1.0.1-x86_64-MacOSX.tar.gz'
+  LINUX_TARGET: 'Serenade-1.0.1-x86_64-Ubuntu.tar.gz'
 
 jobs:
   build:
@@ -33,13 +35,13 @@ jobs:
         shell: bash
         run: |
           cd target/release
-          tar czvf ../../binaries-amd64.tar.gz tpe_hyperparameter_optm serving
+          tar czvf ../../${{ env.LINUX_TARGET }} tpe_hyperparameter_optm serving
           cd -
 
       - name: Publish
         uses: softprops/action-gh-release@v1
         with:
-          files: 'binaries-amd64.tar.gz'
+          files: ${{ env.LINUX_TARGET }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -68,12 +70,12 @@ jobs:
         shell: bash
         run: |
           cd target/release
-          tar czvf ../../binaries-darwin.tar.gz tpe_hyperparameter_optm serving
+          tar czvf ../../${{ env.MACOS_TARGET }} tpe_hyperparameter_optm serving
           cd -
 
       - name: Publish
         uses: softprops/action-gh-release@v1
         with:
-          files: 'binaries-darwin.tar.gz'
+          files: ${{ env.MACOS_TARGET }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
