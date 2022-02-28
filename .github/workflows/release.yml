@@ -54,7 +54,11 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: macos-latest
     
-    steps:    
+    steps:
+      - name: Get version
+        id: get_version
+        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+
       - name: Checkout
         uses: actions/checkout@v2
         with:
@@ -82,5 +86,46 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: ${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.MACOS_TARGET }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-win:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: 
+        target: x86_64-pc-windows-gnu
+
+    steps:
+      - name: Get version
+        id: get_version
+        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Install latest rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+          override: true
+
+      - name: Build
+        run: cargo build --all --release
+
+      - name: Release binaries
+        shell: bash
+        run: |
+          cd target/release
+          zip ../../${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.WINDOWS_TARGET }} tpe_hyperparameter_optm serving
+          cd -
+
+      - name: Publish
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.WINDOWS_TARGET }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
