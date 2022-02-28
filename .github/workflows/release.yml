@@ -9,7 +9,7 @@ env:
   TPE_HPO_BIN: 'tpe_hyperparameter_optm'
   SERVING_BIN: 'serving'
   RELEASE_NAME: 'Serenade'
-  WINDOWS_TARGET: x86_64-pc-windows-msvc.zip
+  WINDOWS_TARGET: x86_64-pc-windows-msvc.Zip
   MACOS_TARGET: x86_64-apple-darwin.tar.gz
   LINUX_AMD64_TARGET: x86_64-unknown-linux-musl.tar.gz
   LINUX_ARM64_TARGET: aarch64-unknown-linux-musl.tar.gz
@@ -125,13 +125,13 @@ jobs:
           $compress = @{
             Path = "D:\a\serenade\serenade\target\release\${{ env.TPE_HPO_BIN }}.exe", "D:\a\serenade\serenade\target\release\${{ env.SERVING_BIN }}.exe"
             CompressionLevel = "Fastest"
-            DestinationPath = ".\${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.version }}-${{ env.WINDOWS_TARGET }}.Zip"
+            DestinationPath = ".\${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.version }}-${{ env.WINDOWS_TARGET }}"
           }
           Compress-Archive @compress
 
       - name: Publish
         uses: softprops/action-gh-release@v1
         with:
-          files: ${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.version }}-${{ env.WINDOWS_TARGET }}
+          files: .\${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.version }}-${{ env.WINDOWS_TARGET }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
