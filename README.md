@@ -7,19 +7,33 @@ behaviors and predicts interesting next items with low latency with support for 
 # Quick guide: getting started with Serenade.
 
 ## Table of contents
-1. [Train- and testset](#dataset)
-2. [Find the best hyperparameter values](#find-hyperparams)
-3. [Configure Serenade to use the hyperparameter values](#update-config)
-4. [Start the Serenade service](#start-service)
-5. [Retrieve recommendations using python](#retrieve-recommendations)
-6. [Research experiments](#research-experiments)
+1. [Downloads](#downloads)
+2. [Train- and testset](#dataset)
+3. [Find the best hyperparameter values](#find-hyperparams)
+4. [Configure Serenade to use the hyperparameter values](#update-config)
+5. [Start the Serenade service](#start-service)
+6. [Retrieve recommendations using python](#retrieve-recommendations)
+7. [Research experiments](#research-experiments)
+
+### Downloads <a name="downloads"></a>
+Serenade can be downloaded [here](https://github.com/bolcom/serenade/releases). Binary executables are available for Windows, Linux and MacOS.
+We provide a sample config file for Serenade [here](https://github.com/bolcom/serenade/blob/main/config/_Default.toml)
+
+Extract the just downloaded archive. You now have the following files.
+```
+serving
+tpe_hyperparameter_optm
+```
+- A configuration file `Default.toml` (an example can be found at `config/_Default.toml`);
+- A csv file with training data `train.txt` in `/datasets/`. Which we describe in the next section.
+- A csv file with test data `test.txt` in `/datasets/`.
 
 
 ### Train- and testset <a name="dataset"></a>
 A train- and testset must be created from historical user-item click data, outside of Serenade. Each row in the training- or test set should contain an historical user-item interaction event with the following fields:
-* ```SessionId``` the ID of the session. Format: Int64
-* ```ItemId``` the ID of the interacted item. Format: Int64
-* ```Time``` the time when the user-item interaction occurred. In epoch seconds: Format F32
+* ```SessionId``` the ID of the session. Format: 64 bit Integer
+* ```ItemId``` the ID of the interacted item. Format: 64 bit Integer
+* ```Time``` the time when the user-item interaction occurred. In epoch seconds: 32 bit Floating point.
 
 The last 24 hours in the historical data can be used as test-set while the rest of the sessions can be used as the training-set and written as plain text using a ```'\t'``` as field separator.
 This is an example of a training data CSV file train.txt:
@@ -39,15 +53,6 @@ SessionId	ItemId	Time
 1011	387377	1435296520
 ```
 
-This guide assumes you have the following:
-- Binary executables for your platform. [We provide precompiled binaries as releases for common platforms: Linux, Mac, and Windows](https://github.com/bolcom/serenade/releases):
-```
-serving
-tpe_hyperparameter_optm
-```
-- A configuration file `Default.toml` (an example can be found at `config/_Default.toml`);
-- A csv file with training data `train.txt` in `/datasets/`.
-- A csv file with test data `test.txt` in `/datasets/`.
 
 ### Find the best hyperparameter values <a name="find-hyperparams"></a>
 The next step is finding the hyperparameters for the train and test-datasets. 
