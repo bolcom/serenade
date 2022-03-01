@@ -1,8 +1,8 @@
 # Serenade: Low-Latency Session-Based Recommendations
 <img src="https://icai.ai/wp-content/uploads/2020/01/AIRLabAmsterdam-10-6-gecomprimeerd-transparant.png" width="250" align="right">
-This repository contains the official code for session-based recommender system Serenade.
-It learns users' preferences by capturing the short-term and sequential patterns from the evolution of user
-behaviors and predicts interesting next items with low latency with support for millions of distinct items.
+This repository contains the official code for session-based recommender system Serenade, which employs VMIS-kNN. 
+It learns users' preferences by capturing the short-term and sequential patterns from the evolution of user behaviors and predicts interesting next items with low latency with support for millions of distinct items.
+VMIS-kNN is an index-based variant of a state-of-the-art nearest neighbor algorithm to session-based recommendation, which scales to use cases with hundreds of millions of clicks to search through.
 
 # Quick guide: getting started with Serenade.
 
