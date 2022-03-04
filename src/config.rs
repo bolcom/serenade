@@ -57,11 +57,10 @@ pub struct HyperparamConfig {
     pub num_iterations: usize,
     pub save_records: bool,
     pub out_path: String,
-    pub enable_business_logic: bool/*,
-    pub n_most_recent_sessions_choices: Vec<i32>,
-    pub neighborhood_size_k_choices: Vec<i32>,
-    pub last_items_in_session_choices: Vec<i32>
-    */
+    pub enable_business_logic: bool,
+    pub n_most_recent_sessions_choices: String,
+    pub neighborhood_size_k_choices: String,
+    pub last_items_in_session_choices: String
 }
 
 impl AppConfig {
@@ -219,31 +218,22 @@ impl HyperparamConfig {
                 .get(path.push("enable_business_logic"))
                 .trim()
                 .value()
-                .unwrap()/*,
+                .unwrap(),
             n_most_recent_sessions_choices: conf
                 .get(path.push("n_most_recent_sessions_choices"))
                 .trim()
-                .values(..)
-                .unwrap()
-                .iter()
-                .map(|s: &String| s.parse::<i32>().unwrap())
-                .collect::<Vec<i32>>(),
+                .value()
+                .unwrap(),
             neighborhood_size_k_choices: conf
                 .get(path.push("neighborhood_size_k_choices"))
                 .trim()
-                .values(..)
-                .unwrap()
-                .iter()
-                .map(|s: &String| s.parse::<i32>().unwrap())
-                .collect::<Vec<i32>>(),
+                .value()
+                .unwrap(),
             last_items_in_session_choices: conf
                 .get(path.push("last_items_in_session_choices"))
-                .values(..)
-                .unwrap()
-                .iter()
-                .map(|s: &String| s.parse::<i32>().unwrap())
-                .collect::<Vec<i32>>()
-            */
+                .trim()
+                .value()
+                .unwrap(),
         }
     }
 }

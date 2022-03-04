@@ -9,7 +9,7 @@ num_workers = 4
 level = "info" # not implemented
 
 [data]
-training_data_path=datasets/retailrocket9_train.txt
+training_data_path="datasets/retailrocket9_train.txt"
 
 [model]
 m_most_recent_sessions = 500

@@ -8,6 +8,16 @@ extern crate csv;
 use csv::Writer;
 
 
+pub fn convert_string_to_vec_i32(s: String) -> Vec<i32> {
+    return s
+        .replace(&['[', ']'][..], "")
+        .chars().filter(|c| !c.is_whitespace())
+        .collect::<String>()
+        .split(",")
+        .map(|s| s.parse().unwrap())
+        .collect();
+}
+
 fn main() -> anyhow::Result<()>{
     // get params from config file
     let config_path = std::env::args().
@@ -20,12 +30,13 @@ fn main() -> anyhow::Result<()>{
     let save_records = config.hyperparam.save_records;
     let out_path = config.hyperparam.out_path;
     let enable_business_logic = config.hyperparam.enable_business_logic;
-    
-    // Possible values for hyperparameters
-    let n_most_recent_sessions_choices = [100, 500, 1000, 2500];
-    let neighborhood_size_k_choices = [50, 100, 500, 1000, 1500];
-    let last_items_in_session_choices = [1, 2, 3, 5, 7, 10];
-    
+    let n_most_recent_sessions_choices = convert_string_to_vec_i32(
+        config.hyperparam.n_most_recent_sessions_choices);
+    let neighborhood_size_k_choices = convert_string_to_vec_i32(
+        config.hyperparam.neighborhood_size_k_choices);
+    let last_items_in_session_choices = convert_string_to_vec_i32(
+        config.hyperparam.last_items_in_session_choices);
+
     // Progress bar
     let pb = ProgressBar::new(num_iterations as u64);
 
