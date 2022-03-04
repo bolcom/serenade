@@ -17,14 +17,14 @@ VMIS-kNN is an index-based variant of a state-of-the-art nearest neighbor algori
 
 ### Downloads <a name="downloads"></a>
 Serenade can be downloaded [here](https://github.com/bolcom/serenade/releases). Binary executables are available for Windows, Linux and MacOS.
-We provide a sample config file for Serenade [here](https://github.com/bolcom/serenade/blob/main/config/_Default.toml)
+We provide a sample config file for Serenade [here](https://github.com/bolcom/serenade/tree/main/_Default.toml)
 
 Extract the just downloaded archive. You now have the following files.
 ```
 serving
 tpe_hyperparameter_optm
 ```
-- A configuration file `Default.toml` (an example can be found at `config/_Default.toml`);
+- A configuration file `Default.toml` (an example can be found at `_Default.toml`);
 - A csv file with training data `train.txt` in `/datasets/`. Which we describe in the next section.
 - A csv file with test data `test.txt` in `/datasets/`.
 
@@ -60,7 +60,7 @@ Serenade uses Tree-Structured Parzen Estimator (TPE) for finding the hyperparame
 
 * The hyperparameter search can be started using:
 ```bash
-./tpe_hyperparameter_optm config/_Default.toml 
+./tpe_hyperparameter_optm _Default.toml 
 ```
 
 The results will be printed out in the terminal, for example:
