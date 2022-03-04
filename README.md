@@ -17,7 +17,7 @@ VMIS-kNN is an index-based variant of a state-of-the-art nearest neighbor algori
 
 ### Downloads <a name="downloads"></a>
 Serenade can be downloaded [here](https://github.com/bolcom/serenade/releases). Binary executables are available for Windows, Linux and MacOS.
-We provide a sample config file for Serenade [here](https://github.com/bolcom/serenade/tree/main/_Default.toml)
+We provide a sample config file for Serenade [here](https://github.com/bolcom/serenade/blob/main/_Default.toml)
 
 Extract the just downloaded archive. You now have the following files.
 ```
