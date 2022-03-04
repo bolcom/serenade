@@ -62,7 +62,6 @@ Serenade uses Tree-Structured Parzen Estimator (TPE) for finding the hyperparame
 ```bash
 ./tpe_hyperparameter_optm config/_Default.toml 
 ```
-note: At this moment the hyper-parameter value ranges in the config file are ignored and Serenade uses the hardcoded ranges defined in lines 23-25 of `src/bin/tpe_hyperparameter_optm.rs`. The hardcoded ranges are commonly used and should give good results. 
 
 The results will be printed out in the terminal, for example:
 ```
