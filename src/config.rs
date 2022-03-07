@@ -54,6 +54,7 @@ pub struct LogicConfig {
 pub struct HyperparamConfig {
     pub training_data_path: String,
     pub test_data_path: String,
+    pub validation_data_path: String,
     pub num_iterations: usize,
     pub save_records: bool,
     pub out_path: String,
@@ -196,6 +197,11 @@ impl HyperparamConfig {
                 .unwrap(),
             test_data_path: conf
                 .get(path.push("test_data_path"))
+                .unquote()
+                .value()
+                .unwrap(),
+            validation_data_path: conf
+                .get(path.push("validation_data_path"))
                 .unquote()
                 .value()
                 .unwrap(),

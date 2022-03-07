@@ -1,6 +1,7 @@
 use rand::SeedableRng as _;
 use serenade_optimized::objective;
 use serenade_optimized::config::AppConfig;
+use std::io::{stdout, Write};
 
 use indicatif::ProgressBar;
 
@@ -26,6 +27,7 @@ fn main() -> anyhow::Result<()>{
     let config = AppConfig::new(config_path);
     let training_data_path = config.hyperparam.training_data_path;
     let test_data_path = config.hyperparam.test_data_path;
+    let validation_data_path = config.hyperparam.validation_data_path;
     let num_iterations = config.hyperparam.num_iterations;
     let save_records = config.hyperparam.save_records;
     let out_path = config.hyperparam.out_path;
@@ -74,6 +76,10 @@ fn main() -> anyhow::Result<()>{
             tpe::categorical_range(
                 last_items_in_session_choices.len())?
         );
+
+    println!("===============================================================");
+    println!("===           START HYPER PARAMETER OPTIMIZATION           ====");
+    println!("===============================================================");
 
     // mutable variables
     let mut best_value = std::f64::NEG_INFINITY;
@@ -130,33 +136,50 @@ fn main() -> anyhow::Result<()>{
     // print best value for each hyperparameter
     // discussion showing that it is faster to "iterate by hand"
     // https://www.reddit.com/r/rust/comments/31syce/using_iterators_to_find_the_index_of_the_min_or/cq4r6xw/
-    println!("Considering {} iterations...", num_iterations);
+    println!("Considering {} iterations for hyper parameter optimization...", num_iterations);
+
+    let mut n_most_recent_sessions = 0;
+    let mut neighborhood_size_k = 0;
+    let mut last_items_in_session = 0;
     for (a, b) in optim0.trials() {
         if b == best_value {
-            println!("Best n_most_recent_sessions: {}", 
-                n_most_recent_sessions_choices[a as usize]);
+            n_most_recent_sessions = n_most_recent_sessions_choices[a as usize];
         }
     }
     for (a, b) in optim1.trials() {
         if b == best_value {
-            println!("Best neighborhood_size_k: {}", 
-            neighborhood_size_k_choices[a as usize]);
+            neighborhood_size_k = neighborhood_size_k_choices[a as usize];
         }
     }
     for (a, b) in optim1.trials() {
         if b == best_value {
-            println!("Best last_items_in_session: {}", 
-            last_items_in_session_choices[a as usize]);
+            last_items_in_session = last_items_in_session_choices[a as usize];
         }
-    }
-    if enable_business_logic {
-        println!("Business logic were enabled.");
-    } else {
-        println!("Business logic were disabled.");
     }
 
-    println!("Best value for the goal metric: {}", best_value);
-    
+    let test_score = objective::objective(
+        training_data_path.clone(),
+        validation_data_path.clone(),
+        n_most_recent_sessions,
+        neighborhood_size_k,
+        last_items_in_session,
+        enable_business_logic
+    );
+    println!("===============================================================");
+    println!("===          HYPER PARAMETER OPTIMIZATION RESULTS          ====");
+    println!("===============================================================");
+    println!("MRR@20 for validation data: {:.4}", best_value);
+    println!("MRR@20 for test data: {:.4}", test_score);
+
+    println!("enabled business_logic for evaluation:{}", enable_business_logic);
+    println!("best hyperparameter values:");
+    println!("n_most_recent_sessions:{}", n_most_recent_sessions);
+    println!("neighborhood_size_k:{}", neighborhood_size_k);
+    println!("last_items_in_session:{}", last_items_in_session);
+
+    println!("HPO done");
+    println!("HPO done");
+    stdout().flush()?;
     wtr.flush()?;
 
     Ok(())

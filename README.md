@@ -17,60 +17,41 @@ VMIS-kNN is an index-based variant of a state-of-the-art nearest neighbor algori
 
 ### Downloads <a name="downloads"></a>
 Serenade can be downloaded [here](https://github.com/bolcom/serenade/releases). Binary executables are available for Windows, Linux and MacOS.
-We provide a sample config file for Serenade [here](https://github.com/bolcom/serenade/blob/main/_Default.toml)
+Download the [toy example project](https://github.com/bolcom/serenade/assets/example/example.zip) which contains toy datasets and a preconfigured configuration file.
 
-Extract the just downloaded archive. You now have the following files.
+Extract both downloaded files in the same directoy. You now have the following files:
 ```
 serving
 tpe_hyperparameter_optm
+train.txt
+test.txt
+valid.txt
+example.toml
 ```
-- A configuration file `Default.toml` (an example can be found at `_Default.toml`);
-- A csv file with training data `train.txt` in `/datasets/`. Which we describe in the next section.
-- A csv file with test data `test.txt` in `/datasets/`.
-
-
-### Train- and testset <a name="dataset"></a>
-A train- and testset must be created from historical user-item click data, outside of Serenade. Each row in the training- or test set should contain an historical user-item interaction event with the following fields:
-* ```SessionId``` the ID of the session. Format: 64 bit Integer
-* ```ItemId``` the ID of the interacted item. Format: 64 bit Integer
-* ```Time``` the time when the user-item interaction occurred. In epoch seconds: 32 bit Floating point.
-
-The last 24 hours in the historical data can be used as test-set while the rest of the sessions can be used as the training-set and written as plain text using a ```'\t'``` as field separator.
-This is an example of a training data CSV file train.txt:
-```
-SessionId	ItemId	Time
-77	453279	1434846304
-77	321706	1434846392
-77	257070	1434846434
-85	52383	1434987517
-```
-
-This is an example of test data test.txt:
-```
-SessionId	ItemId	Time
-897	91755	1435330427
-897	91755	1435330595
-1011	387377	1435296520
-```
-
 
 ### Find the best hyperparameter values <a name="find-hyperparams"></a>
-The next step is finding the hyperparameters for the train and test-datasets. 
+The next step is finding the hyperparameters using the train and test-datasets. 
 Serenade uses Tree-Structured Parzen Estimator (TPE) for finding the hyperparameters. TPE achieves low validation errors compared to Exhaustive Grid Search ([Bergstra et al](http://proceedings.mlr.press/v28/bergstra13.pdf)).
 
 * The hyperparameter search can be started using:
 ```bash
-./tpe_hyperparameter_optm _Default.toml 
+./tpe_hyperparameter_optm example.toml 
 ```
 
 The results will be printed out in the terminal, for example:
 ```
 ...
-Best n_most_recent_sessions: 500
-Best neighborhood_size_k: 1000
-Best last_items_in_session: 5
-Business logic were disabled.
-Best value for the goal metric: 0.16249138818029166
+===============================================================
+===          HYPER PARAMETER OPTIMIZATION RESULTS          ====
+===============================================================
+MRR@20 for validation data: 0.3218
+MRR@20 for test data: 0.3297
+enabled business_logic for evaluation:false
+best hyperparameter values:
+n_most_recent_sessions:500
+neighborhood_size_k:100
+last_items_in_session:2
+HPO done
 ```
 and also in the output file defined in the config file, for example:
 ```
@@ -78,8 +59,8 @@ out_path = "results.csv"
 ```
 
 ### Configure Serenade to use the hyperparameter values <a name="update-config"></a>
-We now update the configuration file `Default.toml` to use the hyperparameter values and set the training_data_path with the location of the ```train.txt```.
-This is an example of the full configuration file
+We now update the configuration file `example.toml` to use the hyperparameter values and set the training_data_path with the location of the ```train.txt```.
+This is the content of the example configuration file
 ```
 config_type = "toml"
 
@@ -92,35 +73,36 @@ num_workers = 4
 level = "info" # not implemented
 
 [data]
-training_data_path=/datasets/train.txt
+training_data_path="train.txt"
 
 [model]
-neighborhood_size_k = 1000
-max_items_in_session = 7 
-m_most_recent_sessions = 250
+m_most_recent_sessions = 500
+neighborhood_size_k = 50
+max_items_in_session = 2
 num_items_to_recommend = 21
 
 [logic]
 enable_business_logic = "false"
 
 [hyperparam]
-training_data_path = "datasets/train.txt"
-test_data_path = "datasets/test.txt"
-num_iterations = 12
+training_data_path = "train.txt"
+test_data_path = "test.txt"
+validation_data_path = "valid.txt"
+num_iterations = 15
 save_records = true
 out_path = "results.csv"
 enable_business_logic = false
-# these configs below are not working yet
 n_most_recent_sessions_choices = [100, 500, 1000, 2500]
 neighborhood_size_k_choices = [50, 100, 500, 1000, 1500]
-last_items_in_session_choices = [1, 2, 3, 5, 7, 10]
+last_items_in_session_choices = [1, 2, 3, 5, 7, 10, 20]
 ```
 
 ### Start the Serenade service <a name="start-service"></a>
 Start the `serving` binary for your platform with the location of the configuration file `Default.toml` as argument
 ```bash
-./serving Default.toml
+./serving example.toml
 ```
+
 
 You can open your webbrowser and goto http://localhost:8080/ you should see an internal page of Serenade.
 
@@ -136,7 +118,7 @@ try:
     params = dict(
         session_id='144',
         user_consent='true',
-        item_id='453279',
+        item_id='13598',
     )
     response = requests.get(url=myurl, params=params)
     response.raise_for_status()
@@ -149,11 +131,30 @@ except Exception as err:
     print(f'Other error occurred: {err}')
 ```
 ```
-[72916, 84895, 92210, 176166, 379693, 129343, 321706, 257070]
+[2835,10,12068,3097,4313,8028,7812,3545,17519,1164,17935,13335,1277,8655,14664,14556,6868,13509,9248,2498,11724]
 ```
 The returned json object is a list with recommended items.
 
 
+### Using your own train- and testset <a name="dataset"></a>
+A train- and testset must be created from historical user-item click data, outside of Serenade. Each row in the training- or test set should contain an historical user-item interaction event with the following fields:
+* ```SessionId``` the ID of the session. Format: 64 bit Integer
+* ```ItemId``` the ID of the interacted item. Format: 64 bit Integer
+* ```Time``` the time when the user-item interaction occurred. In epoch seconds: 32 bit Floating point.
+
+The last 24 hours in the historical data can be used as test-set while the rest of the sessions can be used as the training-set and written as plain text using a ```'\t'``` as field separator.
+This is an example of a training data CSV file train.txt:
+```
+SessionId       ItemId  Time
+10036   14957   1592337718.0
+10036   14713   1592337765.0
+10036   2625    1592338184.0
+10037   7267    1591979344.0
+10037   13892   1591979380.0
+10037   7267    1591979504.0
+10037   3595    1591979784.0
+10038   6424    1591008704.0
+```
 
 # Citation
 > [Serenade - Low-Latency Session-Based Recommendation in e-Commerce at Scale](https://ssc.io/pdf/modds003.pdf)
