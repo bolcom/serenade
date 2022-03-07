@@ -124,6 +124,7 @@ Start the `serving` binary for your platform with the location of the configurat
 
 You can open your webbrowser and goto http://localhost:8080/ you should see an internal page of Serenade.
 
+Serenade exposes [Prometheus metrics](http://localhost:8080/internal/prometheus) out-of-the-box for monitoring. 
 
 ### Retrieve recommendations using python <a name="retrieve-recommendations"></a>
 
