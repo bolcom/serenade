@@ -8,16 +8,16 @@ VMIS-kNN is an index-based variant of a state-of-the-art nearest neighbor algori
 
 ## Table of contents
 1. [Downloads](#downloads)
-2. [Train- and testset](#dataset)
-3. [Find the best hyperparameter values](#find-hyperparams)
-4. [Configure Serenade to use the hyperparameter values](#update-config)
-5. [Start the Serenade service](#start-service)
-6. [Retrieve recommendations using python](#retrieve-recommendations)
-7. [Research experiments](#research-experiments)
+2. [Find the best hyperparameter values](#find-hyperparams)
+3. [Configure Serenade to use the hyperparameter values](#update-config)
+4. [Start the Serenade service](#start-service)
+5. [Retrieve recommendations using python](#retrieve-recommendations)
+6. [Using your own train- and testset](#dataset)
+
 
 ### Downloads <a name="downloads"></a>
 Serenade can be downloaded [here](https://github.com/bolcom/serenade/releases). Binary executables are available for Windows, Linux and MacOS.
-Download the [toy example project](https://github.com/bolcom/serenade/assets/example/example.zip) which contains toy datasets and a preconfigured configuration file.
+Download the [toy example project](https://github.com/bolcom/serenade/raw/main/assets/example/example.zip) which contains toy datasets and a preconfigured configuration file.
 
 Extract both downloaded files in the same directoy. You now have the following files:
 ```
