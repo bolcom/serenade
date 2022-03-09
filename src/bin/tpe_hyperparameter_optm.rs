@@ -32,12 +32,12 @@ fn main() -> anyhow::Result<()>{
     let save_records = config.hyperparam.save_records;
     let out_path = config.hyperparam.out_path;
     let enable_business_logic = config.hyperparam.enable_business_logic;
-    let n_most_recent_sessions_choices = convert_string_to_vec_i32(
-        config.hyperparam.n_most_recent_sessions_choices);
-    let neighborhood_size_k_choices = convert_string_to_vec_i32(
-        config.hyperparam.neighborhood_size_k_choices);
-    let last_items_in_session_choices = convert_string_to_vec_i32(
-        config.hyperparam.last_items_in_session_choices);
+    let n_most_recent_sessions_range = convert_string_to_vec_i32(
+        config.hyperparam.n_most_recent_sessions_range);
+    let neighborhood_size_k_range = convert_string_to_vec_i32(
+        config.hyperparam.neighborhood_size_k_range);
+    let last_items_in_session_range = convert_string_to_vec_i32(
+        config.hyperparam.last_items_in_session_range);
 
     // Progress bar
     let pb = ProgressBar::new(num_iterations as u64);
@@ -60,15 +60,15 @@ fn main() -> anyhow::Result<()>{
     */
     let mut optim0 =
             // n most recent sessions
-            tpe::TpeOptimizer::new(tpe::parzen_estimator(), tpe::range(50.0, 5000.0)?);
+            tpe::TpeOptimizer::new(tpe::parzen_estimator(), tpe::range(n_most_recent_sessions_range.first().unwrap().clone() as f64, n_most_recent_sessions_range.last().unwrap().clone() as f64)?);
 
     let mut optim1 =
             // neighbourhood size k
-            tpe::TpeOptimizer::new(tpe::parzen_estimator(), tpe::range(50.0, 5000.0)?);
+            tpe::TpeOptimizer::new(tpe::parzen_estimator(), tpe::range(neighborhood_size_k_range.first().unwrap().clone() as f64, neighborhood_size_k_range.last().unwrap().clone() as f64)?);
 
     let mut optim2 =
             // last items from session
-            tpe::TpeOptimizer::new(tpe::parzen_estimator(), tpe::range(1.0, 100.0)?);
+            tpe::TpeOptimizer::new(tpe::parzen_estimator(), tpe::range(last_items_in_session_range.first().unwrap().clone() as f64, last_items_in_session_range.last().unwrap().clone() as f64)?);
 
     println!("===============================================================");
     println!("===           START HYPER PARAMETER OPTIMIZATION           ====");

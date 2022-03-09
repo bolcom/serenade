@@ -59,9 +59,9 @@ pub struct HyperparamConfig {
     pub save_records: bool,
     pub out_path: String,
     pub enable_business_logic: bool,
-    pub n_most_recent_sessions_choices: String,
-    pub neighborhood_size_k_choices: String,
-    pub last_items_in_session_choices: String
+    pub n_most_recent_sessions_range: String,
+    pub neighborhood_size_k_range: String,
+    pub last_items_in_session_range: String
 }
 
 impl AppConfig {
@@ -225,18 +225,18 @@ impl HyperparamConfig {
                 .trim()
                 .value()
                 .unwrap(),
-            n_most_recent_sessions_choices: conf
-                .get(path.push("n_most_recent_sessions_choices"))
+            n_most_recent_sessions_range: conf
+                .get(path.push("n_most_recent_sessions_range"))
                 .trim()
                 .value()
                 .unwrap(),
-            neighborhood_size_k_choices: conf
-                .get(path.push("neighborhood_size_k_choices"))
+            neighborhood_size_k_range: conf
+                .get(path.push("neighborhood_size_k_range"))
                 .trim()
                 .value()
                 .unwrap(),
-            last_items_in_session_choices: conf
-                .get(path.push("last_items_in_session_choices"))
+            last_items_in_session_range: conf
+                .get(path.push("last_items_in_session_range"))
                 .trim()
                 .value()
                 .unwrap(),
