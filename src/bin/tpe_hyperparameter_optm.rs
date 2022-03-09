@@ -59,23 +59,16 @@ fn main() -> anyhow::Result<()>{
     for such hyperparameter.
     */
     let mut optim0 =
-        tpe::TpeOptimizer::new(
-            tpe::histogram_estimator(), 
-            tpe::categorical_range(
-                n_most_recent_sessions_choices.len())?
-        );
+            // n most recent sessions
+            tpe::TpeOptimizer::new(tpe::parzen_estimator(), tpe::range(50.0, 5000.0)?);
+
     let mut optim1 =
-        tpe::TpeOptimizer::new(
-            tpe::histogram_estimator(), 
-            tpe::categorical_range(
-                neighborhood_size_k_choices.len())?
-        );
+            // neighbourhood size k
+            tpe::TpeOptimizer::new(tpe::parzen_estimator(), tpe::range(50.0, 5000.0)?);
+
     let mut optim2 =
-        tpe::TpeOptimizer::new(
-            tpe::histogram_estimator(), 
-            tpe::categorical_range(
-                last_items_in_session_choices.len())?
-        );
+            // last items from session
+            tpe::TpeOptimizer::new(tpe::parzen_estimator(), tpe::range(1.0, 100.0)?);
 
     println!("===============================================================");
     println!("===           START HYPER PARAMETER OPTIMIZATION           ====");
@@ -91,23 +84,17 @@ fn main() -> anyhow::Result<()>{
         pb.inc(1);
         // ask() gets the next value of the optimization target 
         // hyperparameter to be evaluated
-        let n_most_recent_sessions_index = optim0.ask(&mut rng)?;
-        let neighborhood_size_k_index = optim1.ask(&mut rng)?;
-        let last_items_in_session_index = optim2.ask(&mut rng)?;
-        let n_most_recent_sessions = n_most_recent_sessions_choices[
-            n_most_recent_sessions_index as usize];
-        let neighborhood_size_k = neighborhood_size_k_choices[
-            neighborhood_size_k_index as usize];   
-        let last_items_in_session = last_items_in_session_choices[
-            last_items_in_session_index as usize];
+        let n_most_recent_sessions = optim0.ask(&mut rng)?;
+        let neighborhood_size_k = optim1.ask(&mut rng)?;
+        let last_items_in_session = optim2.ask(&mut rng)?;
         // get the result of the object function
         // with current combination of hyperparameters
         let v = objective::objective(
-            training_data_path.clone(), 
-            test_data_path.clone(), 
-            n_most_recent_sessions, 
-            neighborhood_size_k, 
-            last_items_in_session,
+            training_data_path.clone(),
+            test_data_path.clone(),
+            n_most_recent_sessions as i32,
+            neighborhood_size_k as i32,
+            last_items_in_session as i32,
             enable_business_logic
         );
 
@@ -124,9 +111,9 @@ fn main() -> anyhow::Result<()>{
         
         // Tells the evaluation result of a hyperparameter
         // value to the optimizer
-        optim0.tell(n_most_recent_sessions_index, v)?;
-        optim1.tell(neighborhood_size_k_index, v)?;
-        optim2.tell(last_items_in_session_index, v)?;
+        optim0.tell(n_most_recent_sessions, v)?;
+        optim1.tell(neighborhood_size_k, v)?;
+        optim2.tell(last_items_in_session, v)?;
 
         // update current best_value
         best_value = best_value.max(v);
@@ -143,17 +130,17 @@ fn main() -> anyhow::Result<()>{
     let mut last_items_in_session = 0;
     for (a, b) in optim0.trials() {
         if b == best_value {
-            n_most_recent_sessions = n_most_recent_sessions_choices[a as usize];
+            n_most_recent_sessions = a as i32;
         }
     }
     for (a, b) in optim1.trials() {
         if b == best_value {
-            neighborhood_size_k = neighborhood_size_k_choices[a as usize];
+            neighborhood_size_k = a as i32;
         }
     }
-    for (a, b) in optim1.trials() {
+    for (a, b) in optim2.trials() {
         if b == best_value {
-            last_items_in_session = last_items_in_session_choices[a as usize];
+            last_items_in_session = a as i32;
         }
     }
 
