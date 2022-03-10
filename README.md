@@ -32,6 +32,7 @@ example.toml
 ### Find the best hyperparameter values <a name="find-hyperparams"></a>
 The next step is finding the hyperparameters using the train and test-datasets. 
 Serenade uses Tree-Structured Parzen Estimator (TPE) for finding the hyperparameters. TPE achieves low validation errors compared to Exhaustive Grid Search ([Bergstra et al](http://proceedings.mlr.press/v28/bergstra13.pdf)).
+The section '[hyperparam]' in the `example.toml` contains the ranges of hyperparameter values that will be explored.
 
 * The hyperparameter search can be started using:
 ```bash
@@ -44,13 +45,13 @@ The results will be printed out in the terminal, for example:
 ===============================================================
 ===          HYPER PARAMETER OPTIMIZATION RESULTS          ====
 ===============================================================
-MRR@20 for validation data: 0.3218
-MRR@20 for test data: 0.3297
+MRR@20 for validation data: 0.3197
+MRR@20 for test data: 0.3394
 enabled business_logic for evaluation:false
 best hyperparameter values:
-n_most_recent_sessions:500
-neighborhood_size_k:100
-last_items_in_session:2
+n_most_recent_sessions:1502
+neighborhood_size_k:288
+last_items_in_session:4
 HPO done
 ```
 and also in the output file defined in the config file, for example:
@@ -59,8 +60,8 @@ out_path = "results.csv"
 ```
 
 ### Configure Serenade to use the hyperparameter values <a name="update-config"></a>
-We now update the configuration file `example.toml` to use the hyperparameter values and set the training_data_path with the location of the ```train.txt```.
-This is the content of the example configuration file
+We now update the `[model]` values in configuration file `example.toml` to use the hyperparameter values and set the training_data_path with the location of the ```train.txt```.
+This is the content of the example configuration file with the new `[model]` paramer values.
 ```
 config_type = "toml"
 
@@ -76,9 +77,9 @@ level = "info" # not implemented
 training_data_path="train.txt"
 
 [model]
-m_most_recent_sessions = 500
-neighborhood_size_k = 50
-max_items_in_session = 2
+m_most_recent_sessions = 1502
+neighborhood_size_k = 288
+max_items_in_session = 4
 num_items_to_recommend = 21
 
 [logic]
@@ -92,9 +93,9 @@ num_iterations = 15
 save_records = true
 out_path = "results.csv"
 enable_business_logic = false
-n_most_recent_sessions_choices = [100, 500, 1000, 2500]
-neighborhood_size_k_choices = [50, 100, 500, 1000, 1500]
-last_items_in_session_choices = [1, 2, 3, 5, 7, 10, 20]
+n_most_recent_sessions_range = [100, 2500]
+neighborhood_size_k_range = [50, 1500]
+last_items_in_session_range = [1, 20]
 ```
 
 ### Start the Serenade service <a name="start-service"></a>
@@ -131,7 +132,7 @@ except Exception as err:
     print(f'Other error occurred: {err}')
 ```
 ```
-[2835,10,12068,3097,4313,8028,7812,3545,17519,1164,17935,13335,1277,8655,14664,14556,6868,13509,9248,2498,11724]
+[2835,10,12068,4313,3097,8028,3545,7812,17519,1164,17935,1277,13335,8655,14664,14556,6868,13509,9248,2498,11724]
 ```
 The returned json object is a list with recommended items.
 
