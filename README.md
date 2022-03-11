@@ -99,7 +99,7 @@ last_items_in_session_range = [1, 20]
 ```
 
 ### Start the Serenade service <a name="start-service"></a>
-Start the `serving` binary for your platform with the location of the configuration file `Default.toml` as argument
+Start the `serving` binary for your platform with the location of the configuration file as argument
 ```bash
 ./serving example.toml
 ```
