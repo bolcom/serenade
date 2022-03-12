@@ -32,7 +32,7 @@ example.toml
 ### Find the best hyperparameter values <a name="find-hyperparams"></a>
 The next step is finding the hyperparameters using the train and test-datasets. 
 Serenade uses Tree-Structured Parzen Estimator (TPE) for finding the hyperparameters. TPE achieves low validation errors compared to Exhaustive Grid Search ([Bergstra et al](http://proceedings.mlr.press/v28/bergstra13.pdf)).
-The section '[hyperparam]' in the `example.toml` contains the ranges of hyperparameter values that will be explored.
+The section `[hyperparam]` in the `example.toml` contains the ranges of hyperparameter values that will be explored.
 
 * The hyperparameter search can be started using:
 ```bash
