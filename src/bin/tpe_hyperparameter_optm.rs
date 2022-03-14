@@ -91,7 +91,7 @@ fn main() -> anyhow::Result<()>{
         // with current combination of hyperparameters
         let v = objective::objective(
             training_data_path.clone(),
-            test_data_path.clone(),
+            validation_data_path.clone(),
             n_most_recent_sessions as i32,
             neighborhood_size_k as i32,
             last_items_in_session as i32,
@@ -146,7 +146,7 @@ fn main() -> anyhow::Result<()>{
 
     let test_score = objective::objective(
         training_data_path.clone(),
-        validation_data_path.clone(),
+        test_data_path.clone(),
         n_most_recent_sessions,
         neighborhood_size_k,
         last_items_in_session,
