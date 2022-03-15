@@ -18,6 +18,7 @@ fn main() {
         vec![50, 100, 500, 1000, 1500],
     );
     param_grid.insert("max_items_in_session".to_string(), vec![1, 2, 3, 5, 7, 15, 100]);
+    param_grid.insert("idf_weighting".to_string(), vec![1, 2, 3]);
 
     let qty_max_reco_results = 21;
 
@@ -46,10 +47,11 @@ fn main() {
         let max_items_in_session = *hyperparams.get("max_items_in_session").unwrap();
         let neighborhood_size_k = *hyperparams.get("neighborhood_size_k").unwrap();
         let m_most_recent_sessions = *hyperparams.get("m_most_recent_sessions").unwrap();
+        let idf_weighting = *hyperparams.get("idf_weighting").unwrap() as f64;
         let enable_business_logic = false;
 
         if neighborhood_size_k <= m_most_recent_sessions {
-            let vmis_index = VMISIndex::new_from_csv(&*path_to_training, m_most_recent_sessions);
+            let vmis_index = VMISIndex::new_from_csv(&*path_to_training, m_most_recent_sessions, idf_weighting);
             let ordered_test_sessions = io::read_test_data_evolving(&*test_data_file);
             let mut mymetric = Mrr::new(20);
             ordered_test_sessions

@@ -9,6 +9,7 @@ fn main() {
     let n_most_recent_sessions = 1500;
     let neighborhood_size_k = 500;
     let last_items_in_session = 3;
+    let idf_weighting = 1.0;
     let enable_business_logic = false;
 
     let path_to_training = std::env::args()
@@ -22,7 +23,7 @@ fn main() {
         .expect("Test data file not specified!");
     println!("test_data_file:{}", test_data_file);
 
-    let vmis_index = VMISIndex::new_from_csv(&*path_to_training, n_most_recent_sessions);
+    let vmis_index = VMISIndex::new_from_csv(&*path_to_training, n_most_recent_sessions, idf_weighting);
 
     let ordered_test_sessions = io::read_test_data_evolving(&*test_data_file);
 

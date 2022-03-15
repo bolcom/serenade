@@ -1,3 +1,4 @@
+use std::cmp::min;
 use rand::SeedableRng as _;
 use serenade_optimized::objective;
 use serenade_optimized::config::AppConfig;
@@ -7,7 +8,6 @@ use indicatif::ProgressBar;
 
 extern crate csv;
 use csv::Writer;
-
 
 pub fn convert_string_to_vec_i32(s: String) -> Vec<i32> {
     return s
@@ -131,35 +131,17 @@ fn main() -> anyhow::Result<()>{
         
     }
 
-    // print best value for each hyperparameter
-    // discussion showing that it is faster to "iterate by hand"
-    // https://www.reddit.com/r/rust/comments/31syce/using_iterators_to_find_the_index_of_the_min_or/cq4r6xw/
     println!("Considering {} iterations for hyper parameter optimization...", num_iterations);
 
-    let mut n_most_recent_sessions = 0;
-    let mut neighborhood_size_k = 0;
-    let mut last_items_in_session = 0;
-    let mut idf_weighting = 0.0;
-    for (a, b) in optim0.trials() {
-        if b == best_value {
-            n_most_recent_sessions = a as i32;
-        }
-    }
-    for (a, b) in optim1.trials() {
-        if b == best_value {
-            neighborhood_size_k = a as i32;
-        }
-    }
-    for (a, b) in optim2.trials() {
-        if b == best_value {
-            last_items_in_session = a as i32;
-        }
-    }
-    for (a, b) in optim3.trials() {
-        if b == best_value {
-            idf_weighting = a.round();
-        }
-    }
+    let n_most_recent_sessions = optim0.trials().into_iter()
+        .find(|(_value, score)| score == &best_value).map(|(value, _score)| value as i32).unwrap();
+    let neighborhood_size_k = optim1.trials().into_iter()
+        .find(|(_value, score)| score == &best_value).map(|(value, _score)| value as i32).unwrap();
+    let neighborhood_size_k = min(neighborhood_size_k, n_most_recent_sessions);
+    let last_items_in_session = optim2.trials().into_iter()
+        .find(|(_value, score)| score == &best_value).map(|(value, _score)| value as i32).unwrap();
+    let idf_weighting = optim3.trials().into_iter()
+        .find(|(_value, score)| score == &best_value).map(|(value, _score)| value.floor()).unwrap();
 
     let test_score = objective::objective(
         training_data_path.clone(),
@@ -170,11 +152,12 @@ fn main() -> anyhow::Result<()>{
         idf_weighting ,
         enable_business_logic,
     );
+    let evaluation_length = 20;
     println!("===============================================================");
     println!("===          HYPER PARAMETER OPTIMIZATION RESULTS          ====");
     println!("===============================================================");
-    println!("MRR@20 for validation data: {:.4}", best_value);
-    println!("MRR@20 for test data: {:.4}", test_score);
+    println!("MRR@{} for validation data: {:.4}", evaluation_length, best_value);
+    println!("MRR@{} for test data: {:.4}", evaluation_length, test_score);
 
     println!("enabled business_logic for evaluation:{}", enable_business_logic);
     println!("best hyperparameter values:");
