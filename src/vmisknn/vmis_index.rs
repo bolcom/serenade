@@ -506,13 +506,10 @@ pub(crate) fn prepare_hashmap(
         item_to_top_sessions_ordered.insert(*current_item, current_item_similar_sessions_id_sorted);
         // Store (item, idf score) in second hashmap
         // let idf_score = (current_item_timestamps.len() as f64 / historical_sessions_values_sorted.len() as f64).ln();
-        let idf_score = if idf_weighting > 0.0 {
+        let idf_score =
             (historical_sessions_values_sorted.len() as f64
                 / current_item_timestamps.len() as f64)
-                .ln() * idf_weighting
-        } else {
-            1.0
-        };
+                .ln() * idf_weighting;
         item_to_idf_score.insert(*current_item, idf_score);
         let attributes = ProductAttributes {
             is_adult: false,

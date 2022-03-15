@@ -143,8 +143,13 @@ pub fn predict<I: SimilarityComputationNew + Send + Sync>(
 
         for item_id in training_item_ids.iter() {
             let item_idf = index.idf(item_id);
-            *item_scores.entry(*item_id).or_insert(0.0) +=
-                session_weight * item_idf * scored_session.score;
+            if item_idf > 0.0 {
+                *item_scores.entry(*item_id).or_insert(0.0) +=
+                    session_weight * item_idf * scored_session.score;
+            } else {
+                *item_scores.entry(*item_id).or_insert(0.0) +=
+                    session_weight * scored_session.score;
+            }
         }
     }
 
