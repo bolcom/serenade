@@ -41,6 +41,7 @@ async fn main() -> std::io::Result<()> {
         Arc::new(VMISIndex::new_from_csv(
             &config.data.training_data_path,
             config.model.m_most_recent_sessions,
+            config.model.idf_weighting as f64,
         ))
     } else {
         panic!(
