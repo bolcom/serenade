@@ -38,6 +38,8 @@ fn main() -> anyhow::Result<()>{
         config.hyperparam.neighborhood_size_k_range);
     let last_items_in_session_range = convert_string_to_vec_i32(
         config.hyperparam.last_items_in_session_range);
+    let idf_weighting_range = convert_string_to_vec_i32(
+        config.hyperparam.idf_weighting_range);
 
     // Progress bar
     let pb = ProgressBar::new(num_iterations as u64);
@@ -50,7 +52,8 @@ fn main() -> anyhow::Result<()>{
             "n_most_recent_sessions",
             "neighborhood_size_k",
             "last_items_in_session",
-            "Mean_reciprocal_rank"
+            "idf_weighting",
+            "MRR@20"
         ])?;
     }
     /* 
@@ -70,6 +73,10 @@ fn main() -> anyhow::Result<()>{
             // last items from session
             tpe::TpeOptimizer::new(tpe::parzen_estimator(), tpe::range(last_items_in_session_range.first().unwrap().clone() as f64, last_items_in_session_range.last().unwrap().clone() as f64)?);
 
+    let mut optim3 =
+        // last items from session
+        tpe::TpeOptimizer::new(tpe::parzen_estimator(), tpe::range(idf_weighting_range.first().unwrap().clone() as f64, idf_weighting_range.last().unwrap().clone() as f64)?);
+
     println!("===============================================================");
     println!("===           START HYPER PARAMETER OPTIMIZATION           ====");
     println!("===============================================================");
@@ -87,6 +94,7 @@ fn main() -> anyhow::Result<()>{
         let n_most_recent_sessions = optim0.ask(&mut rng)?;
         let neighborhood_size_k = optim1.ask(&mut rng)?;
         let last_items_in_session = optim2.ask(&mut rng)?;
+        let idf_weighting = optim3.ask(&mut rng)?.floor();
         // get the result of the object function
         // with current combination of hyperparameters
         let v = objective::objective(
@@ -95,6 +103,7 @@ fn main() -> anyhow::Result<()>{
             n_most_recent_sessions as i32,
             neighborhood_size_k as i32,
             last_items_in_session as i32,
+            idf_weighting,
             enable_business_logic
         );
 
@@ -105,6 +114,7 @@ fn main() -> anyhow::Result<()>{
                 n_most_recent_sessions.to_string(),
                 neighborhood_size_k.to_string(),
                 last_items_in_session.to_string(),
+                idf_weighting.to_string(),
                 v.to_string()
             ])?;
         }
@@ -114,6 +124,7 @@ fn main() -> anyhow::Result<()>{
         optim0.tell(n_most_recent_sessions, v)?;
         optim1.tell(neighborhood_size_k, v)?;
         optim2.tell(last_items_in_session, v)?;
+        optim3.tell(idf_weighting, v)?;
 
         // update current best_value
         best_value = best_value.max(v);
@@ -128,6 +139,7 @@ fn main() -> anyhow::Result<()>{
     let mut n_most_recent_sessions = 0;
     let mut neighborhood_size_k = 0;
     let mut last_items_in_session = 0;
+    let mut idf_weighting = 0.0;
     for (a, b) in optim0.trials() {
         if b == best_value {
             n_most_recent_sessions = a as i32;
@@ -143,6 +155,11 @@ fn main() -> anyhow::Result<()>{
             last_items_in_session = a as i32;
         }
     }
+    for (a, b) in optim3.trials() {
+        if b == best_value {
+            idf_weighting = a.round();
+        }
+    }
 
     let test_score = objective::objective(
         training_data_path.clone(),
@@ -150,7 +167,8 @@ fn main() -> anyhow::Result<()>{
         n_most_recent_sessions,
         neighborhood_size_k,
         last_items_in_session,
-        enable_business_logic
+        idf_weighting ,
+        enable_business_logic,
     );
     println!("===============================================================");
     println!("===          HYPER PARAMETER OPTIMIZATION RESULTS          ====");
@@ -162,6 +180,7 @@ fn main() -> anyhow::Result<()>{
     println!("best hyperparameter values:");
     println!("n_most_recent_sessions:{}", n_most_recent_sessions);
     println!("neighborhood_size_k:{}", neighborhood_size_k);
+    println!("idf_weighting:{}", idf_weighting);
     println!("last_items_in_session:{}", last_items_in_session);
 
     println!("HPO done");

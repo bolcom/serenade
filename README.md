@@ -46,11 +46,12 @@ The results will be printed out in the terminal, for example:
 ===          HYPER PARAMETER OPTIMIZATION RESULTS          ====
 ===============================================================
 MRR@20 for validation data: 0.3197
-MRR@20 for test data: 0.3394
+MRR@20 for test data: 0.3401
 enabled business_logic for evaluation:false
 best hyperparameter values:
 n_most_recent_sessions:1502
 neighborhood_size_k:288
+idf_weighting:2
 last_items_in_session:4
 HPO done
 ```
@@ -81,6 +82,7 @@ m_most_recent_sessions = 1502
 neighborhood_size_k = 288
 max_items_in_session = 4
 num_items_to_recommend = 21
+idf_weighting = 1
 
 [logic]
 enable_business_logic = "false"
@@ -96,6 +98,7 @@ enable_business_logic = false
 n_most_recent_sessions_range = [100, 2500]
 neighborhood_size_k_range = [50, 1500]
 last_items_in_session_range = [1, 20]
+idf_weighting_range = [0, 5]
 ```
 
 ### Start the Serenade service <a name="start-service"></a>

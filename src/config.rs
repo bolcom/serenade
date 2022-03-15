@@ -16,6 +16,7 @@ const DEFAULT_MOST_RECENT_SESSIONS_M: usize = 500;
 const DEFAULT_NEIGHBORHOOD_SIZE_K: usize = 500;
 const DEFAULT_NUM_ITEMS_TO_RECOMMEND: usize = 21;
 const DEFAULT_MAX_ITEMS_IN_SESSION: usize = 2;
+const DEFAULT_IDF_WEIGHTING: usize = 1;
 
 pub struct AppConfig {
     pub server: ServerConfig,
@@ -45,6 +46,7 @@ pub struct ModelConfig {
     pub neighborhood_size_k: usize,
     pub num_items_to_recommend: usize,
     pub max_items_in_session: usize,
+    pub idf_weighting: usize,
 }
 
 pub struct LogicConfig {
@@ -61,7 +63,8 @@ pub struct HyperparamConfig {
     pub enable_business_logic: bool,
     pub n_most_recent_sessions_range: String,
     pub neighborhood_size_k_range: String,
-    pub last_items_in_session_range: String
+    pub last_items_in_session_range: String,
+    pub idf_weighting_range: String,
 }
 
 impl AppConfig {
@@ -171,6 +174,11 @@ impl ModelConfig {
                 .trim()
                 .value()
                 .unwrap_or(DEFAULT_MAX_ITEMS_IN_SESSION),
+            idf_weighting: conf
+                .get(path.push("idf_weighting"))
+                .trim()
+                .value()
+                .unwrap_or(DEFAULT_IDF_WEIGHTING),
         }
     }
 }
@@ -237,6 +245,11 @@ impl HyperparamConfig {
                 .unwrap(),
             last_items_in_session_range: conf
                 .get(path.push("last_items_in_session_range"))
+                .trim()
+                .value()
+                .unwrap(),
+            idf_weighting_range: conf
+                .get(path.push("idf_weighting_range"))
                 .trim()
                 .value()
                 .unwrap(),

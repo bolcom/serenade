@@ -11,9 +11,10 @@ pub fn objective(
     n_most_recent_sessions: i32, 
     neighborhood_size_k: i32, 
     last_items_in_session: i32,
+    idf_weighting: f64,
     enable_business_logic: bool) -> f64 {
     
-    let vmis_index = VMISIndex::new_from_csv(&*path_to_training, n_most_recent_sessions as usize);
+    let vmis_index = VMISIndex::new_from_csv(&*path_to_training, n_most_recent_sessions as usize, idf_weighting);
 
     let ordered_test_sessions = io::read_test_data_evolving(&*test_data_file);
 

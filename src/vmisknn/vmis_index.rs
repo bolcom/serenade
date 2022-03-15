@@ -35,7 +35,7 @@ pub struct VMISIndex {
 }
 
 impl VMISIndex {
-    pub fn new_from_csv(path_to_training: &str, m_most_recent_sessions: usize) -> Self {
+    pub fn new_from_csv(path_to_training: &str, m_most_recent_sessions: usize, idf_weighting: f64) -> Self {
         let start_time = Instant::now();
         println!(
             "reading training data, determine items per training session {}",
@@ -65,6 +65,7 @@ impl VMISIndex {
             &historical_sessions_max_time_stamp,
             m_most_recent_sessions,
             training_data_stats.qty_events_p99_5 as usize,
+            idf_weighting,
         );
         println!(
             "prepare indexes:{} micros",
@@ -423,6 +424,7 @@ pub(crate) fn prepare_hashmap(
     timestamps: &[u32],
     m_most_recent_sessions: usize,
     max_training_session_length: usize,
+    idf_weighting: f64,
 ) -> (
     HashMap<u64, Vec<u32>>,
     HashMap<u64, f64>,
@@ -504,9 +506,13 @@ pub(crate) fn prepare_hashmap(
         item_to_top_sessions_ordered.insert(*current_item, current_item_similar_sessions_id_sorted);
         // Store (item, idf score) in second hashmap
         // let idf_score = (current_item_timestamps.len() as f64 / historical_sessions_values_sorted.len() as f64).ln();
-        let idf_score = (historical_sessions_values_sorted.len() as f64
-            / current_item_timestamps.len() as f64)
-            .ln();
+        let idf_score = if idf_weighting > 0.0 {
+            (historical_sessions_values_sorted.len() as f64
+                / current_item_timestamps.len() as f64)
+                .ln() * idf_weighting
+        } else {
+            1.0
+        };
         item_to_idf_score.insert(*current_item, idf_score);
         let attributes = ProductAttributes {
             is_adult: false,
