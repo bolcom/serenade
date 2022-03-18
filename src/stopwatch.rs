@@ -29,10 +29,10 @@ impl Stopwatch {
         self.start_time = Instant::now();
     }
 
-    pub fn stop(&mut self, position_in_session: usize) {
+    pub fn stop(&mut self, position_in_session: &usize) {
         let duration = self.start_time.elapsed();
         let duration_as_micros: f64 = duration.as_micros() as f64;
-        let tuple: PositionDurationMicros = (position_in_session as u32, duration_as_micros);
+        let tuple: PositionDurationMicros = (*position_in_session as u32, duration_as_micros);
         self.prediction_durations.push(tuple);
     }
 
