@@ -188,7 +188,7 @@ impl LogicConfig {
         LogicConfig {
             enable_business_logic: conf
                 .get(path.push("enable_business_logic"))
-                .unquote()
+                .trim()
                 .value()
                 .unwrap(),
         }
