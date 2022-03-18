@@ -13,7 +13,7 @@ VMIS-kNN is an index-based variant of a state-of-the-art nearest neighbor algori
 4. [Start the Serenade service](#start-service)
 5. [Retrieve recommendations using python](#retrieve-recommendations)
 6. [Using your own train- and testset](#dataset)
-7. [Evaluate the model](#evaluator)
+7. [Evaluate a testsetl](#evaluator)
 
 
 ### Downloads <a name="downloads"></a>
@@ -161,7 +161,7 @@ SessionId       ItemId  Time
 10038   6424    1591008704.0
 ```
 
-### Evaluate the model <a name="evaluator"></a>
+### Evaluate a testset <a name="evaluator"></a>
 The `evaluator` application can be used to evaluate a test dataset. It reports on several metrics.
 * The evaluation can be started using:
 ```bash
