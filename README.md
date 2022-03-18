@@ -13,7 +13,7 @@ VMIS-kNN is an index-based variant of a state-of-the-art nearest neighbor algori
 4. [Start the Serenade service](#start-service)
 5. [Retrieve recommendations using python](#retrieve-recommendations)
 6. [Using your own train- and testset](#dataset)
-7. [Evaluate a testsetl](#evaluator)
+7. [Evaluate a testset](#evaluator)
 
 
 ### Downloads <a name="downloads"></a>
