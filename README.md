@@ -13,6 +13,7 @@ VMIS-kNN is an index-based variant of a state-of-the-art nearest neighbor algori
 4. [Start the Serenade service](#start-service)
 5. [Retrieve recommendations using python](#retrieve-recommendations)
 6. [Using your own train- and testset](#dataset)
+7. [Evaluate the model](#evaluator)
 
 
 ### Downloads <a name="downloads"></a>
@@ -23,6 +24,7 @@ Extract both downloaded files in the same directoy. You now have the following f
 ```
 serving
 tpe_hyperparameter_optm
+evaluator
 train.txt
 test.txt
 valid.txt
@@ -41,7 +43,6 @@ The section `[hyperparam]` in the `example.toml` contains the ranges of hyperpar
 
 The results will be printed out in the terminal, for example:
 ```
-...
 ===============================================================
 ===          HYPER PARAMETER OPTIMIZATION RESULTS          ====
 ===============================================================
@@ -159,6 +160,27 @@ SessionId       ItemId  Time
 10037   3595    1591979784.0
 10038   6424    1591008704.0
 ```
+
+### Evaluate the model <a name="evaluator"></a>
+The `evaluator` application can be used to evaluate a test dataset. It reports on several metrics.
+* The evaluation can be started using:
+```bash
+./evaluator example.toml 
+```
+
+```
+===============================================================
+===               START EVALUATING TEST FILE               ====
+===============================================================
+Mrr@20,Ndcg@20,HitRate@20,Popularity@20,Precision@20,Coverage@20,Recall@20,F1score@20
+0.3277,0.3553,0.6402,0.0499,0.0680,0.2765,0.4456,0.1180
+Qty test evaluations: 931
+Prediction latency
+p90 (microseconds): 66
+p95 (microseconds): 66
+p99.5 (microseconds): 66
+```
+
 
 # Citation
 > [Serenade - Low-Latency Session-Based Recommendation in e-Commerce at Scale](https://ssc.io/pdf/modds003.pdf)

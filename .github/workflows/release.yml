@@ -8,6 +8,7 @@ on:
 env:
   TPE_HPO_BIN: 'tpe_hyperparameter_optm'
   SERVING_BIN: 'serving'
+  EVALUATOR_BIN: 'evaluator'
   RELEASE_NAME: 'Serenade'
   WINDOWS_TARGET: x86_64-pc-windows-msvc.Zip
   MACOS_TARGET: x86_64-apple-darwin.tar.gz
@@ -43,7 +44,7 @@ jobs:
         shell: bash
         run: |
           cd target/release
-          tar czvf ../../${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.LINUX_AMD64_TARGET }} ${{ env.TPE_HPO_BIN }} ${{ env.SERVING_BIN }}
+          tar czvf ../../${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.LINUX_AMD64_TARGET }} ${{ env.TPE_HPO_BIN }} ${{ env.SERVING_BIN }} ${{ env.EVALUATOR_BIN }}
           cd -
 
       - name: Publish
@@ -82,7 +83,7 @@ jobs:
         shell: bash
         run: |
           cd target/release
-          tar czvf ../../${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.MACOS_TARGET }} ${{ env.TPE_HPO_BIN }} ${{ env.SERVING_BIN }}
+          tar czvf ../../${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.MACOS_TARGET }} ${{ env.TPE_HPO_BIN }} ${{ env.SERVING_BIN }} ${{ env.EVALUATOR_BIN }}
           cd -
 
       - name: Publish
@@ -123,7 +124,7 @@ jobs:
         shell: powershell
         run: |
           $compress = @{
-            Path = "D:\a\serenade\serenade\target\release\${{ env.TPE_HPO_BIN }}.exe", "D:\a\serenade\serenade\target\release\${{ env.SERVING_BIN }}.exe"
+            Path = "D:\a\serenade\serenade\target\release\${{ env.TPE_HPO_BIN }}.exe", "D:\a\serenade\serenade\target\release\${{ env.SERVING_BIN }}.exe", "D:\a\serenade\serenade\target\release\${{ env.EVALUATOR_BIN }}.exe" 
             CompressionLevel = "Fastest"
             DestinationPath = ".\${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.version }}-${{ env.WINDOWS_TARGET }}"
           }
