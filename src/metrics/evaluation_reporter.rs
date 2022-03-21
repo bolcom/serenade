@@ -10,6 +10,7 @@ use crate::metrics::recall::Recall;
 use crate::metrics::SessionMetric;
 
 pub struct EvaluationReporter {
+    n: i32,
     mrr: Mrr,
     ndcg: Ndcg,
     hitrate: HitRate,
@@ -29,6 +30,7 @@ impl EvaluationReporter {
     ) -> EvaluationReporter {
         // If we define these metrics as mutable as we expect it to be,
         // the compilation reports a warning that these variables dont need to be mutable.
+        let n = 0;
         let mrr = Mrr::new(length);
         let ndcg = Ndcg::new(length);
         let hitrate = HitRate::new(length);
@@ -39,6 +41,7 @@ impl EvaluationReporter {
         let f1 = F1score::new(length);
 
         EvaluationReporter {
+            n,
             mrr,
             ndcg,
             hitrate,
@@ -53,6 +56,7 @@ impl EvaluationReporter {
 
 impl EvaluationReporter {
     pub fn add(&mut self, recommendations: &[u64], next_items: &[u64]) {
+        self.n += 1;
         self.mrr.add(recommendations, next_items);
         self.ndcg.add(recommendations, next_items);
         self.hitrate.add(recommendations, next_items);
@@ -64,6 +68,7 @@ impl EvaluationReporter {
     }
 
     pub fn result(&self) -> String {
+        let n = format!("{}", self.n);
         let mrr_score = format!("{:.4}", self.mrr.result());
         let ndcg_score = format!("{:.4}", self.ndcg.result());
         let hitrate_score = format!("{:.4}", self.hitrate.result());
@@ -73,7 +78,8 @@ impl EvaluationReporter {
         let recall_score = format!("{:.4}", self.recall.result());
         let f1_score = format!("{:.4}", self.f1.result());
         format!(
-            "{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{}",
+            n,
             mrr_score,
             ndcg_score,
             hitrate_score,
@@ -86,6 +92,7 @@ impl EvaluationReporter {
     }
 
     pub fn get_name(&self) -> String {
+        let n_name = "qty_evaluations".to_string();
         let mrr_name = self.mrr.get_name();
         let ndcg_name = self.ndcg.get_name();
         let hitrate_name = self.hitrate.get_name();
@@ -95,7 +102,8 @@ impl EvaluationReporter {
         let recall_name = self.recall.get_name();
         let f1_name = self.f1.get_name();
         format!(
-            "{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{}",
+            n_name,
             mrr_name,
             ndcg_name,
             hitrate_name,
