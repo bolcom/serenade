@@ -12,8 +12,8 @@ VMIS-kNN is an index-based variant of a state-of-the-art nearest neighbor algori
 3. [Configure Serenade to use the hyperparameter values](#update-config)
 4. [Start the Serenade service](#start-service)
 5. [Retrieve recommendations using python](#retrieve-recommendations)
-6. [Using your own train- and testset](#dataset)
-7. [Evaluate a testset](#evaluator)
+6. [Evaluate the testset](#evaluator)
+7. [Using your own train- and testset](#dataset)
 
 
 ### Downloads <a name="downloads"></a>
@@ -141,6 +141,27 @@ except Exception as err:
 The returned json object is a list with recommended items.
 
 
+### Evaluate the testset <a name="evaluator"></a>
+The `evaluator` application can be used to evaluate a test dataset. It reports on several metrics.
+* The evaluation can be started using:
+```bash
+./evaluator example.toml 
+```
+
+```
+===============================================================
+===               START EVALUATING TEST FILE               ====
+===============================================================
+Mrr@20,Ndcg@20,HitRate@20,Popularity@20,Precision@20,Coverage@20,Recall@20,F1score@20
+0.3277,0.3553,0.6402,0.0499,0.0680,0.2765,0.4456,0.1180
+Qty test evaluations: 931
+Prediction latency
+p90 (microseconds): 66
+p95 (microseconds): 66
+p99.5 (microseconds): 66
+```
+
+
 ### Using your own train- and testset <a name="dataset"></a>
 A train- and testset must be created from historical user-item click data, outside of Serenade. Each row in the training- or test set should contain an historical user-item interaction event with the following fields:
 * ```SessionId``` the ID of the session. Format: 64 bit Integer
@@ -159,26 +180,6 @@ SessionId       ItemId  Time
 10037   7267    1591979504.0
 10037   3595    1591979784.0
 10038   6424    1591008704.0
-```
-
-### Evaluate a testset <a name="evaluator"></a>
-The `evaluator` application can be used to evaluate a test dataset. It reports on several metrics.
-* The evaluation can be started using:
-```bash
-./evaluator example.toml 
-```
-
-```
-===============================================================
-===               START EVALUATING TEST FILE               ====
-===============================================================
-Mrr@20,Ndcg@20,HitRate@20,Popularity@20,Precision@20,Coverage@20,Recall@20,F1score@20
-0.3277,0.3553,0.6402,0.0499,0.0680,0.2765,0.4456,0.1180
-Qty test evaluations: 931
-Prediction latency
-p90 (microseconds): 66
-p95 (microseconds): 66
-p99.5 (microseconds): 66
 ```
 
 
