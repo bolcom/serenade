@@ -41,7 +41,7 @@ impl SessionMetric for Recall {
 
         let intersection = top_recos.intersection(&unique_next_items);
 
-        self.sum_of_scores += intersection.count() as f64 / next_items.len() as f64
+        self.sum_of_scores += intersection.count() as f64 / unique_next_items.len() as f64
     }
 
     fn result(&self) -> f64 {

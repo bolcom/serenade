@@ -232,6 +232,7 @@ mod vmisknn_test {
         let m = 500;
         let how_many = 20;
         let enable_business_logic = false;
+        let idf_weighting = 1.0;
 
         // 7 training data records
         let session1_items_ids: Vec<u64> = vec![920006, 920005, 920004];
@@ -279,6 +280,7 @@ mod vmisknn_test {
             &historical_sessions_max_time_stamp,
             n_most_recent_sessions,
             training_data_stats.qty_events_p99_5 as usize,
+            idf_weighting
         );
 
         let vmis_index = VMISIndex {
