@@ -1,15 +1,6 @@
 Preparation
 ===
 
-Get and Format Data
----
-
-### How to get the data
-
-Example public datasets: <https://drive.google.com/file/d/1zeGdSoxfkRW3oAvpYGv9u2AGHP-jghfp/view?usp=sharing>
-
-Download and extract the data files.
-
 ### Data format
 
 Serenade needs training data for generating recommendations and test data to evaluate the quality of your recommendations.
