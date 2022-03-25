@@ -41,7 +41,7 @@ impl SessionMetric for Recall {
 
         let intersection = top_recos.intersection(&unique_next_items);
 
-        self.sum_of_scores += intersection.count() as f64 / unique_next_items.len() as f64
+        self.sum_of_scores += intersection.count() as f64 / next_items.len() as f64
     }
 
     fn result(&self) -> f64 {
@@ -70,7 +70,7 @@ mod recall_test {
         ];
         let actual_next_items: Vec<u64> = vec![3, 55, 3, 4];
         under_test.add(&recommendations, &actual_next_items);
-        assert!((0.6666666666666666 - under_test.result()).abs() < f64::EPSILON);
+        assert!((0.5 - under_test.result()).abs() < f64::EPSILON);
         assert_eq!("Recall@20", under_test.get_name());
     }
 }
