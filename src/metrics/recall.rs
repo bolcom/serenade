@@ -70,7 +70,7 @@ mod recall_test {
         ];
         let actual_next_items: Vec<u64> = vec![3, 55, 3, 4];
         under_test.add(&recommendations, &actual_next_items);
-        assert!((0.6666666666666666 - under_test.result()).abs() < f64::EPSILON);
+        assert!((0.5 - under_test.result()).abs() < f64::EPSILON);
         assert_eq!("Recall@20", under_test.get_name());
     }
 }

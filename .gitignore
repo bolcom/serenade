@@ -25,3 +25,4 @@ sessions.db/
 indices/
 dataset*
 *.csv
+assets/example/
