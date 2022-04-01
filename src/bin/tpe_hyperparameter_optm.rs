@@ -1,7 +1,7 @@
 use std::cmp::min;
 use rand::SeedableRng as _;
-use serenade_optimized::objective;
-use serenade_optimized::config::AppConfig;
+use serenade::objective;
+use serenade::config::AppConfig;
 use std::io::{stdout, Write};
 
 use indicatif::ProgressBar;
@@ -44,7 +44,7 @@ fn main() -> anyhow::Result<()>{
     // Progress bar
     let pb = ProgressBar::new(num_iterations as u64);
 
-    let mut wtr = Writer::from_path(out_path)?;    
+    let mut wtr = Writer::from_path(out_path)?;
     if save_records {
         // csv writer for storing all values of the whole procedure
         wtr.write_record(&[
@@ -56,9 +56,9 @@ fn main() -> anyhow::Result<()>{
             "MRR@20"
         ])?;
     }
-    /* 
+    /*
     Each instance of TpeOptimizer tries to search out the value
-    which could minimize/maximize the evaluation result 
+    which could minimize/maximize the evaluation result
     for such hyperparameter.
     */
     let mut optim0 =
@@ -84,12 +84,12 @@ fn main() -> anyhow::Result<()>{
     // mutable variables
     let mut best_value = std::f64::NEG_INFINITY;
     let mut rng = rand::rngs::StdRng::from_seed(Default::default());
-    
+
     // optimization loop for num_iterations
     for i in 0..num_iterations {
         // increment progress bar
         pb.inc(1);
-        // ask() gets the next value of the optimization target 
+        // ask() gets the next value of the optimization target
         // hyperparameter to be evaluated
         let n_most_recent_sessions = optim0.ask(&mut rng)?;
         let neighborhood_size_k = optim1.ask(&mut rng)?;
@@ -118,7 +118,7 @@ fn main() -> anyhow::Result<()>{
                 v.to_string()
             ])?;
         }
-        
+
         // Tells the evaluation result of a hyperparameter
         // value to the optimizer
         optim0.tell(n_most_recent_sessions, v)?;
@@ -128,7 +128,7 @@ fn main() -> anyhow::Result<()>{
 
         // update current best_value
         best_value = best_value.max(v);
-        
+
     }
 
     println!("Considering {} iterations for hyper parameter optimization...", num_iterations);

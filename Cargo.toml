@@ -1,8 +1,8 @@
 [package]
-name = "serenade_optimized"
-version = "1.0.0"
+name = "serenade"
+version = "0.2.8"
 authors = ["submission@sigmod2021.org"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "serving"

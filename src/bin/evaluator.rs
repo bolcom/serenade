@@ -1,10 +1,10 @@
 use std::path::Path;
-use serenade_optimized::{io, vmisknn};
+use serenade::{io, vmisknn};
 
-use serenade_optimized::vmisknn::vmis_index::VMISIndex;
-use serenade_optimized::config::AppConfig;
-use serenade_optimized::metrics::evaluation_reporter::EvaluationReporter;
-use serenade_optimized::stopwatch::Stopwatch;
+use serenade::vmisknn::vmis_index::VMISIndex;
+use serenade::config::AppConfig;
+use serenade::metrics::evaluation_reporter::EvaluationReporter;
+use serenade::stopwatch::Stopwatch;
 
 fn main() {
     let config_path = std::env::args().nth(1).unwrap_or_default();

@@ -1,8 +1,8 @@
-use serenade_optimized::hyperparameter::hyperparamgrid::HyperParamGrid;
-use serenade_optimized::metrics::mrr::Mrr;
-use serenade_optimized::metrics::SessionMetric;
-use serenade_optimized::vmisknn::vmis_index::VMISIndex;
-use serenade_optimized::{io, vmisknn};
+use serenade::hyperparameter::hyperparamgrid::HyperParamGrid;
+use serenade::metrics::mrr::Mrr;
+use serenade::metrics::SessionMetric;
+use serenade::vmisknn::vmis_index::VMISIndex;
+use serenade::{io, vmisknn};
 use std::collections::HashMap;
 
 use indicatif::ProgressBar;
