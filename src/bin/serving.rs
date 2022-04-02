@@ -1,4 +1,4 @@
-extern crate serenade_optimized;
+extern crate serenade;
 
 use sessions::RocksDBSessionStore;
 
@@ -12,12 +12,12 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use serenade_optimized::config::AppConfig;
-use serenade_optimized::dataframeutils::SharedHandlesAndConfig;
-use serenade_optimized::endpoints::index_resource::internal;
-use serenade_optimized::endpoints::recommend_resource::v1_recommend;
-use serenade_optimized::sessions;
-use serenade_optimized::vmisknn::vmis_index::VMISIndex;
+use serenade::config::AppConfig;
+use serenade::dataframeutils::SharedHandlesAndConfig;
+use serenade::endpoints::index_resource::internal;
+use serenade::endpoints::recommend_resource::v1_recommend;
+use serenade::sessions;
+use serenade::vmisknn::vmis_index::VMISIndex;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {

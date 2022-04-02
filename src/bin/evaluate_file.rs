@@ -1,9 +1,9 @@
 use itertools::Itertools;
-use serenade_optimized::io::read_training_data;
+use serenade::io::read_training_data;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
-use serenade_optimized::metrics::evaluation_reporter::EvaluationReporter;
+use serenade::metrics::evaluation_reporter::EvaluationReporter;
 
 fn main() {
     // This tool can evaluate predictions made by computational models and stored as a file.

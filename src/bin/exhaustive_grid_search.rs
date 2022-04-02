@@ -1,5 +1,5 @@
-use serenade_optimized::config::AppConfig;
-use serenade_optimized::objective;
+use serenade::config::AppConfig;
+use serenade::objective;
 
 use indicatif::ProgressBar;
 
@@ -28,7 +28,7 @@ fn main() -> anyhow::Result<()>{
     let total_num_iterations = n_most_recent_sessions_choices.len() * neighborhood_size_k_choices.len() * last_items_in_session_choices.len() * idf_weighting_choices.len();
     let pb = ProgressBar::new(total_num_iterations as u64);
 
-    let mut wtr = Writer::from_path(out_path)?;    
+    let mut wtr = Writer::from_path(out_path)?;
     if save_records {
         // csv writer for storing all values of the whole procedure
         wtr.write_record(&[
@@ -49,7 +49,7 @@ fn main() -> anyhow::Result<()>{
     let mut best_last_items_in_session = -1;
     let mut best_idf_weighting = -1;
     // let mut rng = rand::rngs::StdRng::from_seed(Default::default());
-    
+
     // exhaustive grid search
     for n_most_recent_sessions in n_most_recent_sessions_choices {
         for neighborhood_size_k in neighborhood_size_k_choices {
@@ -94,12 +94,12 @@ fn main() -> anyhow::Result<()>{
             }
         }
     }
-    // print best value for each hyperparameter    
-    println!("Best n_most_recent_sessions: {}", 
+    // print best value for each hyperparameter
+    println!("Best n_most_recent_sessions: {}",
         best_n_most_recent_sessions);
-    println!("Best neighborhood_size_k: {}", 
+    println!("Best neighborhood_size_k: {}",
         best_neighborhood_size_k);
-    println!("Best last_items_in_session: {}", 
+    println!("Best last_items_in_session: {}",
         best_last_items_in_session);
     println!("Best idf_weighting: {}",
              best_idf_weighting);
@@ -110,8 +110,8 @@ fn main() -> anyhow::Result<()>{
     }
 
     println!("Best value for the goal metric: {}", best_value);
-    
+
     wtr.flush()?;
-    
+
     Ok(())
 }
