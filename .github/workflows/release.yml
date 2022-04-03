@@ -147,8 +147,3 @@ jobs:
           files: .\${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.version }}-${{ env.WINDOWS_TARGET }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Release crate
-        uses: katyo/publish-crates@v1
-        with:
-          registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
