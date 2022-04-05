@@ -55,7 +55,7 @@ jobs:
           tar czvf ../../${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.LINUX_AMD64_TARGET }} ${{ env.TPE_HPO_BIN }} ${{ env.SERVING_BIN }} ${{ env.EVALUATOR_BIN }}
           cd -
 
-      - name: Publish
+      - name: Publish linux release
         uses: softprops/action-gh-release@v1
         with:
           files: ${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.LINUX_AMD64_TARGET }}
@@ -99,7 +99,7 @@ jobs:
           tar czvf ../../${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.MACOS_TARGET }} ${{ env.TPE_HPO_BIN }} ${{ env.SERVING_BIN }} ${{ env.EVALUATOR_BIN }}
           cd -
 
-      - name: Publish
+      - name: Publish mac release
         uses: softprops/action-gh-release@v1
         with:
           files: ${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.MACOS_TARGET }}
@@ -143,7 +143,7 @@ jobs:
           }
           Compress-Archive @compress
 
-      - name: Publish
+      - name: Publish win release
         uses: softprops/action-gh-release@v1
         with:
           files: .\${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.version }}-${{ env.WINDOWS_TARGET }}
