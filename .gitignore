@@ -26,3 +26,4 @@ indices/
 dataset*
 *.csv
 assets/example/
+Serenade-*.tar.gz
