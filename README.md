@@ -15,6 +15,8 @@ VMIS-kNN is an index-based variant of a state-of-the-art nearest neighbor algori
 5. [Retrieve recommendations using python](#retrieve-recommendations)
 6. [Evaluate the testset](#evaluator)
 7. [Using your own train- and testset](#dataset)
+8. [Citation](#citation)
+9. [License](#license)
 
 
 ### Downloads <a name="downloads"></a>
