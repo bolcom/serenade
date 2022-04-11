@@ -1,7 +1,12 @@
-# Serenade: Low-Latency Session-Based Recommendations
+# [Serenade: Low-Latency Session-Based Recommendations](https://github.com/bolcom/serenade)
+
+[![Crate Version](https://img.shields.io/crates/v/serenade.svg)](https://crates.io/crates/serenade)
+[![API Docs](https://docs.rs/serenade/badge.svg)](https://docs.rs/serenade)
+[![Crate License](https://img.shields.io/crates/l/serenade.svg)](https://crates.io/crates/serenade)
+
 [<img src="https://icai.ai/wp-content/uploads/2020/01/AIRLabAmsterdam-10-6-gecomprimeerd-transparant.png" width="250" align="right">](https://icai.ai/airlab/)
 [<img src="https://icai.ai/wp-content/uploads/2020/01/logo-uva-transparant-300x67.png" width="250" align="right">](https://irlab.science.uva.nl/)
-This repository contains the official code for session-based recommender system Serenade, which employs VMIS-kNN. 
+This repository contains the official code for session-based recommender system Serenade, which employs VMIS-kNN.
 It learns users' preferences by capturing the short-term and sequential patterns from the evolution of user behaviors and predicts interesting next items with low latency with support for millions of distinct items.
 VMIS-kNN is an index-based variant of a state-of-the-art nearest neighbor algorithm to session-based recommendation, which scales to use cases with hundreds of millions of clicks to search through.
 
@@ -35,13 +40,13 @@ example.toml
 ```
 
 ### Find the best hyperparameter values <a name="find-hyperparams"></a>
-The next step is finding the hyperparameters using the train and test-datasets. 
+The next step is finding the hyperparameters using the train and test-datasets.
 Serenade uses Tree-Structured Parzen Estimator (TPE) for finding the hyperparameters. TPE achieves low validation errors compared to Exhaustive Grid Search ([Bergstra et al](http://proceedings.mlr.press/v28/bergstra13.pdf)).
 The section `[hyperparam]` in the `example.toml` contains the ranges of hyperparameter values that will be explored.
 
 * The hyperparameter search can be started using:
 ```bash
-./tpe_hyperparameter_optm example.toml 
+./tpe_hyperparameter_optm example.toml
 ```
 
 The results will be printed out in the terminal, for example:
@@ -114,7 +119,7 @@ Start the `serving` binary for your platform with the location of the configurat
 
 You can open your webbrowser and goto http://localhost:8080/ you should see an internal page of Serenade.
 
-Serenade exposes [Prometheus metrics](http://localhost:8080/internal/prometheus) out-of-the-box for monitoring. 
+Serenade exposes [Prometheus metrics](http://localhost:8080/internal/prometheus) out-of-the-box for monitoring.
 
 ### Retrieve recommendations using python <a name="retrieve-recommendations"></a>
 
@@ -148,7 +153,7 @@ The returned json object is a list with recommended items.
 The `evaluator` application can be used to evaluate a test dataset. It reports on several metrics.
 * The evaluation can be started using:
 ```bash
-./evaluator example.toml 
+./evaluator example.toml
 ```
 
 ```
