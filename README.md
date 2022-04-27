@@ -1,8 +1,11 @@
 # [Serenade: Low-Latency Session-Based Recommendations](https://github.com/bolcom/serenade)
 
-[![Crate Version](https://img.shields.io/crates/v/serenade.svg)](https://crates.io/crates/serenade)
+[![Crates.io](https://img.shields.io/crates/v/serenade?style=flat-square)](https://crates.io/crates/serenade)
+[![Crates.io](https://img.shields.io/crates/d/serenade?style=flat-square)](https://crates.io/crates/serenade)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](https://github.com/bolcom/serenade/LICENSE.md)
+[![Build Status](https://img.shields.io/github/workflow/status/bolcom/serenade/Release/v0.2.6?style=flat-square)](https://github.com/bolcom/serenade/actions/workflows/release.yml?query=branch%3Av0.2.6)
 [![API Docs](https://docs.rs/serenade/badge.svg)](https://docs.rs/serenade)
-[![Crate License](https://img.shields.io/crates/l/serenade.svg)](https://crates.io/crates/serenade)
+[![Contributors](https://img.shields.io/github/contributors/bolcom/serenade?style=flat-square)](https://github.com/bolcom/serenade/graphs/contributors)
 
 [<img src="https://icai.ai/wp-content/uploads/2020/01/AIRLabAmsterdam-10-6-gecomprimeerd-transparant.png" width="250" align="right">](https://icai.ai/airlab/)
 [<img src="https://icai.ai/wp-content/uploads/2020/01/logo-uva-transparant-300x67.png" width="250" align="right">](https://irlab.science.uva.nl/)
