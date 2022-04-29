@@ -13,6 +13,9 @@ This repository contains the official code for session-based recommender system 
 It learns users' preferences by capturing the short-term and sequential patterns from the evolution of user behaviors and predicts interesting next items with low latency with support for millions of distinct items.
 VMIS-kNN is an index-based variant of a state-of-the-art nearest neighbor algorithm to session-based recommendation, which scales to use cases with hundreds of millions of clicks to search through.
 
+The VMIS-kNN implementation has a p90 prediction latency of 1.7ms in our micro benchmark. 
+The Serenade recommender service using the VMIS-kNN algorithm easily handles 1000 predictions per second using only two vCPU's in total. The p90 prediction latency is < 7ms including istio loadbalancers, network traffic etc.
+
 # Quick guide: getting started with Serenade.
 
 ## Table of contents
