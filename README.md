@@ -14,7 +14,7 @@ It learns users' preferences by capturing the short-term and sequential patterns
 VMIS-kNN is an index-based variant of a state-of-the-art nearest neighbor algorithm to session-based recommendation, which scales to use cases with hundreds of millions of clicks to search through.
 
 The VMIS-kNN implementation has a p90 prediction latency of 1.7ms in our micro benchmark with sampled trainingset up to 60M user-item interactions (1.76 million distinct items). 
-The Serenade recommender service using the VMIS-kNN algorithm easily handles 1000 predictions per second using only two vCPU's in total. The p90 prediction latency is < 7ms including istio loadbalancers, network traffic etc. Training data is 2.3 billion records of which 582 million training records are used after index pruning and contains about 6.5 million distinct products.
+The Serenade recommender service using the VMIS-kNN algorithm easily handles 1000 predictions per second using only two vCPU's in total. The p90 prediction latency is < 7ms end-to-end, including network traffic, istio loadbalancers, fetching session information from RocksDb and filtering for product availablity and intimacy etc. Training data is 2.3 billion records of which 582 million training records are used after index pruning and contains about 6.5 million distinct products.
 
 # Quick guide: getting started with Serenade.
 
