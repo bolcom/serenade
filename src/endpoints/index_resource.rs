@@ -81,7 +81,9 @@ pub async fn internal(config: Data<SharedHandlesAndConfig>) -> HttpResponse {
     html.push_str(&config.max_items_in_session.to_string());
     html.push_str("<br />Qty items to recommend: ");
     html.push_str(&config.num_items_to_recommend.to_string());
-    html.push_str("<br /><a href=\"/v1/recommend?session_id=144&user_consent=true&item_id=1001004010971015\">v1 endpoint of our model</a>");
+    html.push_str("<br /><a href=\"/v1/recommend?session_id=144&user_consent=true&item_id=");
+    html.push_str(&config.example_item_id.to_string());
+    html.push_str("\">v1 endpoint of our model</a>");
     html.push_str("<h3>Machine instance</h3>");
     html.push_str("<br />Qty CPU's detected: ");
     html.push_str(&*sys_info::cpu_num().unwrap_or(0).to_string());

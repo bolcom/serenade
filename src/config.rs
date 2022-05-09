@@ -51,6 +51,7 @@ pub struct ModelConfig {
 
 pub struct LogicConfig {
     pub enable_business_logic: bool,
+    pub example_item_id: usize,
 }
 
 pub struct HyperparamConfig {
@@ -191,6 +192,11 @@ impl LogicConfig {
                 .trim()
                 .value()
                 .unwrap(),
+            example_item_id: conf
+                .get(path.push("example_item_id"))
+                .trim()
+                .value()
+                .unwrap_or(0),
         }
     }
 }

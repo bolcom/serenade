@@ -18,6 +18,7 @@ pub struct SharedHandlesAndConfig {
     pub qty_workers: usize,
     pub db_compaction_ttl_in_secs: usize,
     pub enable_business_logic: bool,
+    pub example_item_id: usize,
 }
 
 pub struct TrainingDataStats {

@@ -31,6 +31,7 @@ async fn main() -> std::io::Result<()> {
     let max_items_in_session = config.model.max_items_in_session;
     let qty_workers = config.server.num_workers;
     let enable_business_logic = config.logic.enable_business_logic;
+    let example_item_id = config.logic.example_item_id;
 
     let training_data_path = Path::new(&config.data.training_data_path);
     let vmis_index = if training_data_path.is_dir() {
@@ -69,6 +70,7 @@ async fn main() -> std::io::Result<()> {
             qty_workers,
             db_compaction_ttl_in_secs: session_ttl.as_secs() as usize,
             enable_business_logic,
+            example_item_id,
         };
 
         App::new()
