@@ -81,6 +81,9 @@ fn main() {
     println!("{}", reporter.result());
     println!("Qty test evaluations: {}", stopwatch.get_n());
     println!("Prediction latency");
+    println!("p25 (microseconds): {}", stopwatch.get_percentile_in_micros(25.0));
+    println!("p50 (microseconds): {}", stopwatch.get_percentile_in_micros(50.0));
+    println!("p75 (microseconds): {}", stopwatch.get_percentile_in_micros(75.0));
     println!("p90 (microseconds): {}", stopwatch.get_percentile_in_micros(90.0));
     println!("p95 (microseconds): {}", stopwatch.get_percentile_in_micros(95.0));
     println!("p99.5 (microseconds): {}", stopwatch.get_percentile_in_micros(99.5));
