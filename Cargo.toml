@@ -6,7 +6,7 @@ categories = ["science"]
 readme = "README.md"
 repository = "https://github.com/bolcom/serenade/"
 license = "Apache-2.0"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["submission@sigmod2021.org"]
 edition = "2021"
 

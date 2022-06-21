@@ -2,12 +2,13 @@ Create a New Tag & Release
 ===
 For every new tag, the workflow at `.github/workflows/release.yml` creates a new release, with the source code and binaries for MacOS, Linux, and Windows.
 
-If you wish to create a new release, just push a new git tag in the following format:
-```
-git tag v<MAJOR>.<MINOR>.<PATCH> && git push origin --tag
-```
+If you wish to create a new release, do the following:
 
-For example:
+First:
 ```
-git tag v0.0.2 && git push origin --tag
+Increase the version number in the Cargo.toml file
+```
+then:
+```
+git tag v0.3.1 && git push origin --tag
 ```
