@@ -664,7 +664,7 @@ pub fn read_from_file(
     history_session_id.push(item_id_sorted[0]);
     // Loop over length of data
     for i in 1..session_id_sorted.len() {
-        if session_id_sorted[i] == session_id_sorted[i - 1] {
+        if session_id_sorted[i] == session_id_sorted[i - 1] && i != (session_id_sorted.len() - 1) {
             if !history_session.contains(&(item_id_sorted[i] as u64)) {
                 history_session.push(item_id_sorted[i] as u64);
                 history_session_id.push(session_id_sorted[i]);
