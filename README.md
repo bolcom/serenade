@@ -201,11 +201,19 @@ SessionId       ItemId  Time
 # Citation  <a name="citation"></a>
 > [Serenade - Low-Latency Session-Based Recommendation in e-Commerce at Scale](https://ssc.io/pdf/modds003.pdf)
 
-    @article{Kersbergen2022SerenadeScale,
+    @inproceedings{Kersbergen2022SerenadeScale,
         title = {{Serenade - Low-Latency Session-Based Recommendation in e-Commerce at Scale}},
         year = {2022},
-        journal = {SIGMOD},
-        author = {Kersbergen, Barrie and Sprangers, Olivier and Schelter, Sebastian}
+        series = {SIGMOD '22}
+        author = {Kersbergen, Barrie and Sprangers, Olivier and Schelter, Sebastian},
+        booktitle = {Proceedings of the 2022 International Conference on Management of Data},
+        pages = {150–159},
+        numpages = {10},
+        location = {Philadelphia, PA, USA},
+        isbn = {9781450392495},
+        publisher = {Association for Computing Machinery},
+        address = {New York, NY, USA},
+        doi = {10.1145/3514221.3517901},
     }
 
 # Join us <a name="join-us"></a>
