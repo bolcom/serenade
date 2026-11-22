@@ -1,9 +1,6 @@
-extern crate hashbrown;
-
 use crate::vmisknn::vmis_index::ProductAttributes;
 use crate::vmisknn::SessionScore;
 use std::collections::BinaryHeap;
-
 
 pub trait SimilarityComputationNew {
     fn items_for_session(&self, session_idx: &u32) -> &[u64];
@@ -19,6 +16,18 @@ pub trait SimilarityComputationNew {
         k: usize,
         m: usize,
     ) -> BinaryHeap<SessionScore>;
+
+    /// Implementations may reuse caller-owned buffers; existing implementations
+    /// retain their original behavior through this default method.
+    fn find_neighbors_with_scratch(
+        &self,
+        evolving_session: &[u64],
+        k: usize,
+        m: usize,
+        _scratch: &mut crate::vmisknn::NeighborScratch,
+    ) -> BinaryHeap<SessionScore> {
+        self.find_neighbors(evolving_session, k, m)
+    }
 
     fn find_attributes(&self, item_id: &u64) -> Option<&ProductAttributes>;
 }

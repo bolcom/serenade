@@ -1,5 +1,3 @@
-extern crate sys_info;
-
 use actix_web::{get, web, HttpResponse};
 use chrono::Utc;
 

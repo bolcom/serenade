@@ -1,146 +1,110 @@
-name: Release
-
+name: Binary release
 on:
+  workflow_dispatch:
   push:
-    tags:
-      - 'v*.*.*'
-
-env:
-  TPE_HPO_BIN: 'tpe_hyperparameter_optm'
-  SERVING_BIN: 'serving'
-  EVALUATOR_BIN: 'evaluator'
-  RELEASE_NAME: 'Serenade'
-  WINDOWS_TARGET: x86_64-pc-windows-msvc.Zip
-  MACOS_TARGET: x86_64-apple-darwin.tar.gz
-  LINUX_AMD64_TARGET: x86_64-unknown-linux-musl.tar.gz
-  LINUX_ARM64_TARGET: aarch64-unknown-linux-musl.tar.gz
-
+    branches: ['release/**']
+    tags: ['v*.*.*']
+permissions:
+  contents: read
+concurrency:
+  group: binary-release-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  linuxCI:
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            platform: windows-x86_64
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            platform: linux-x86_64
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            platform: macos-x86_64
+          - os: macos-15
+            target: aarch64-apple-darwin
+            platform: macos-aarch64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      MACOSX_DEPLOYMENT_TARGET: '15.0'
+      RUSTFLAGS: ${{ matrix.platform == 'windows-x86_64' && '-C target-feature=+crt-static' || '' }}
     steps:
-      - name: Get version
-        id: get_version
-        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
-
-      - name: Checkout
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
-          fetch-depth: 0
-
-      - name: Install latest rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          default: true
-          override: true
-
-      - name: Build
-        run: cargo build --all --release
-
+          python-version: '3.12'
+      - name: Linux native build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang libclang-dev cmake
+      - name: Windows libclang
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $clang = Join-Path $env:ProgramFiles 'LLVM/bin'
+          if (!(Test-Path (Join-Path $clang 'libclang.dll'))) { throw 'libclang.dll missing' }
+          "LIBCLANG_PATH=$clang" >> $env:GITHUB_ENV
+      - name: macOS libclang
+        if: runner.os == 'macOS'
+        run: echo "LIBCLANG_PATH=$(dirname "$(xcrun --find clang)")/../lib" >> "$GITHUB_ENV"
+      - name: Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup target add --toolchain stable ${{ matrix.target }}
+          rustc +stable -vV
       - name: Test
-        run: cargo test
-
-      - name: Release binaries
+        run: cargo +stable test --locked --target ${{ matrix.target }}
+      - name: Build applications
+        run: cargo +stable build --locked --release --target ${{ matrix.target }} --bin serving --bin evaluator --bin tpe_hyperparameter_optm
+      - name: Package, extract, and exercise applications
+        env:
+          PACKAGE_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('validation-{0}', github.sha) }}
+        run: python scripts/package_release.py --target ${{ matrix.target }} --platform ${{ matrix.platform }} --version ${{ env.PACKAGE_VERSION }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: serenade-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: serenade-*
+          merge-multiple: true
+          path: dist
+      - name: Verify complete release and publish draft atomically
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
         shell: bash
         run: |
-          cd target/release
-          tar czvf ../../${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.LINUX_AMD64_TARGET }} ${{ env.TPE_HPO_BIN }} ${{ env.SERVING_BIN }} ${{ env.EVALUATOR_BIN }}
-          cd -
-
-      - name: Publish linux release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: ${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.LINUX_AMD64_TARGET }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Release crate
-        uses: katyo/publish-crates@v1
-        with:
-          registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-  macCI:
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: macos-latest
-
-    steps:
-      - name: Get version
-        id: get_version
-        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
-
-      - name: Checkout
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
-
-      - name: Install latest rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          target: x86_64-apple-darwin
-          default: true
-          override: true
-
-      - name: Build
-        run: cargo build --all --release
-
-      - name: Release binaries
-        shell: bash
-        run: |
-          cd target/release
-          tar czvf ../../${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.MACOS_TARGET }} ${{ env.TPE_HPO_BIN }} ${{ env.SERVING_BIN }} ${{ env.EVALUATOR_BIN }}
-          cd -
-
-      - name: Publish mac release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: ${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.VERSION }}-${{ env.MACOS_TARGET }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  winCI:
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: windows-latest
-
-    steps:
-      - name: Install 7Zip PowerShell Module
-        shell: powershell
-        run: Install-Module 7Zip4PowerShell -Force -Verbose
-
-      - id: get_version
-        uses: battila7/get-version-action@v2
-
-      - name: Checkout
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
-
-      - name: Install latest rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          default: true
-          override: true
-
-      - name: Build
-        run: cargo build --all --release
-
-      - name: Release binaries
-        shell: powershell
-        run: |
-          $compress = @{
-            Path = "D:\a\serenade\serenade\target\release\${{ env.TPE_HPO_BIN }}.exe", "D:\a\serenade\serenade\target\release\${{ env.SERVING_BIN }}.exe", "D:\a\serenade\serenade\target\release\${{ env.EVALUATOR_BIN }}.exe"
-            CompressionLevel = "Fastest"
-            DestinationPath = ".\${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.version }}-${{ env.WINDOWS_TARGET }}"
-          }
-          Compress-Archive @compress
-
-      - name: Publish win release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: .\${{ env.RELEASE_NAME }}-${{ steps.get_version.outputs.version }}-${{ env.WINDOWS_TARGET }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          set -euo pipefail
+          for platform in windows-x86_64 linux-x86_64 macos-x86_64 macos-aarch64; do
+            extension=tar.gz
+            if [[ "$platform" == windows-* ]]; then extension=zip; fi
+            test -s "dist/serenade-$TAG-$platform.$extension"
+            test -s "dist/serenade-$TAG-$platform.$extension.sha256"
+          done
+          (cd dist && sha256sum -c *.sha256)
+          # Refuse to replace any existing release, including a failed draft.
+          # The create API also rejects duplicates if another publisher races us.
+          gh api "repos/$GH_REPO/releases" --paginate --jq '.[].tag_name' > existing-tags
+          if grep -Fxq "$TAG" existing-tags; then
+            echo 'Release already exists; inspect it and explicitly remove an incomplete draft before retrying.' >&2
+            exit 1
+          fi
+          gh release create "$TAG" --verify-tag --draft --title "Serenade $TAG" --generate-notes
+          gh release upload "$TAG" dist/*
+          gh release edit "$TAG" --draft=false

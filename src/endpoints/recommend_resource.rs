@@ -21,7 +21,24 @@ pub struct V1QueryParams {
 pub async fn v1_recommend(
     data: web::Data<SharedHandlesAndConfig>,
     query: web::Query<V1QueryParams>,
+    executor: Option<web::Data<crate::executor::BlockingExecutor>>,
 ) -> HttpResponse {
+    if let Some(executor) = executor {
+        let query = query.into_inner();
+        let result = match executor.submit(move || recommend(&data, query)) {
+            Ok(result) => result,
+            Err(_) => return HttpResponse::ServiceUnavailable().finish(),
+        };
+        match result.await {
+            Ok(items) => HttpResponse::Ok().json(items),
+            Err(_) => HttpResponse::ServiceUnavailable().finish(),
+        }
+    } else {
+        HttpResponse::Ok().json(recommend(&data, query.into_inner()))
+    }
+}
+
+fn recommend(data: &SharedHandlesAndConfig, query: V1QueryParams) -> Vec<u64> {
     let most_recent_item = query.item_id;
     let user_consent = query.user_consent;
     let session_id_digest = md5::compute(&query.session_id);
@@ -37,23 +54,46 @@ pub async fn v1_recommend(
     let enable_business_logic = data.enable_business_logic;
 
     let session_items = if user_consent {
-        let mut session_items = session_store.get_session_items(&evolving_session_id);
+        let stored = session_store.try_get_session_items(&evolving_session_id);
+        let read_ok = stored.is_ok();
+        let mut session_items = stored.unwrap_or_else(|error| {
+            eprintln!("session read failed: {:#}", error);
+            Vec::new()
+        });
         if session_items.is_empty() {
             session_items.push(most_recent_item);
-        } else if session_items.last().unwrap() != &most_recent_item {
+        } else if data.knn.algorithm != vmisknn::algorithms::Algorithm::Vmis
+            || session_items.last().unwrap() != &most_recent_item
+        {
             session_items.push(most_recent_item);
             if session_items.len() > max_items_in_session {
                 // Reduce the amount of session_items to max_items_in_session.
                 session_items.drain(0..1);
             }
         }
-        session_store.update_session_items(&evolving_session_id, &session_items);
+        if read_ok {
+            if let Err(error) =
+                session_store.try_update_session_items(&evolving_session_id, &session_items)
+            {
+                eprintln!("session write failed: {:#}", error);
+                session_items = vec![most_recent_item];
+            }
+        }
         session_items
     } else {
         vec![most_recent_item]
     };
 
-    let recommendations = vmisknn::predict(vmis_index, &session_items, k, m, how_many, enable_business_logic);
+    let recommendations = vmisknn::predict_with_model(
+        vmis_index,
+        &session_items,
+        k,
+        m,
+        how_many,
+        enable_business_logic,
+        &data.knn,
+        chrono::Utc::now().timestamp_millis() as f64 / 1000.0,
+    );
 
     let recommended_items: Vec<u64> = recommendations
         .into_sorted_vec()
@@ -61,5 +101,5 @@ pub async fn v1_recommend(
         .map(|scored| scored.id)
         .collect();
 
-    HttpResponse::Ok().json(recommended_items)
+    recommended_items
 }

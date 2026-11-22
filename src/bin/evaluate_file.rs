@@ -1,9 +1,9 @@
 use itertools::Itertools;
 use serenade::io::read_training_data;
+use serenade::metrics::evaluation_reporter::EvaluationReporter;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
-use serenade::metrics::evaluation_reporter::EvaluationReporter;
 
 fn main() {
     // This tool can evaluate predictions made by computational models and stored as a file.
@@ -26,14 +26,14 @@ fn main() {
                     .collect_vec()
                     .into_iter()
                     .filter(|str| str.len() > 0)
-                    .map(|x| x.clone().parse::<u64>().unwrap())
+                    .map(|x| x.parse::<u64>().unwrap())
                     .collect_vec();
                 let next_items = *unsafe { recos_w_predictions.get_unchecked(1) };
                 let next_items = next_items
                     .split(",")
                     .collect_vec()
                     .into_iter()
-                    .map(|x| x.clone().parse::<u64>().unwrap())
+                    .map(|x| x.parse::<u64>().unwrap())
                     .collect_vec();
                 // recos.iter
                 reporter.add(&recos, &next_items);
@@ -48,7 +48,6 @@ fn main() {
     println!("predictions file: {}", predictions_file);
     println!("{}", reporter.get_name());
     println!("{}", reporter.result());
-
 }
 
 fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>

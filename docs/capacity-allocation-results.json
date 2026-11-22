@@ -1,0 +1,24 @@
+{
+  "histories": 2052,
+  "before_score_entries": 46233,
+  "after_score_entries": 46268,
+  "histories_with_score_or_membership_changes": 1541,
+  "common_entries_with_score_changes": 25608,
+  "maximum_absolute_score_delta": 421.45361854735063,
+  "allocation_calls_before": 48169,
+  "allocation_calls_after": 12312,
+  "requested_bytes_before": 84474544,
+  "requested_bytes_after": 119789072,
+  "original_comparison": {
+    "histories": 2052,
+    "original_score_entries": 46495,
+    "capacity_score_entries": 46268,
+    "histories_with_score_or_membership_changes": 1551,
+    "common_entries_with_score_changes": 25764,
+    "maximum_absolute_score_delta": 427.957238873556
+  },
+  "original_repeat_comparison": {
+    "histories_with_score_or_membership_changes": 1538,
+    "common_entries_with_score_changes": 25762
+  }
+}

@@ -30,7 +30,9 @@ impl SessionMetric for HitRate {
             .collect_vec();
         let next_item = next_items[0];
         let index = top_recos.iter().position(|&item_id| item_id == &next_item);
-        if let Some(_rank) = index { self.sum_of_scores += 1_f64 }
+        if let Some(_rank) = index {
+            self.sum_of_scores += 1_f64
+        }
     }
 
     fn result(&self) -> f64 {
@@ -45,7 +47,6 @@ impl SessionMetric for HitRate {
         format!("HitRate@{}", self.length)
     }
 }
-
 
 #[cfg(test)]
 mod hitrate_test {

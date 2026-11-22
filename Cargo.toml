@@ -18,29 +18,24 @@ path = "src/bin/serving.rs"
 
 [dependencies]
 csv = "1.1"
+serde_json = "1.0"
 rand = "0.8"
 itertools = "0.10"
 actix-web = "3.3"
+futures = "0.3"
 rocksdb = {version = "0.21", default-features = false}
 bincode = "1.3"
-chrono = "0.4"
-serde_derive = "1.0"
-serde = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
 actix-web-prom = "0.5"
 sys-info = "0.9"
-hashbrown = {version = "0.11", features = ["rayon"]}
+hashbrown = {version = "0.11", features = ["serde"]}
 tdigest = "0.2"
-rand_pcg = "0.3.0"
-float-cmp = "0.8.0"
 uuid = "0.8"
 md5 = "0.7"
 rayon = "1.5.0"
 dary_heap = "0.2.2"
-num-format = "0.4.0"
-bencher = "0.1"
 avro-rs = {version = "0.13", features = ["snappy"]}
-stats-cli = "2.0.0"
 justconfig = "1.0"
 tpe = "0.2.0"
 anyhow = "1.0.53"
-indicatif = "0.16.2"
