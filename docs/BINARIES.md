@@ -5,6 +5,13 @@ Windows), this guide, LICENSE.md, assets/example/workflows.toml and the bundled
 train.txt, valid.txt and test.txt example data. No Rust installation is needed.
 The example corpus is the existing repository example.zip, distributed with Serenade.
 
+When an official release is published, its archives and `.sha256` files appear at
+https://github.com/bkersbergen/serenade/releases. Choose your platform below.
+Before extracting, verify the downloaded archive against its sidecar:
+`sha256sum -c ARCHIVE.sha256` on Linux, `shasum -a 256 -c ARCHIVE.sha256`
+on macOS, or compare `(Get-FileHash .\ARCHIVE.zip -Algorithm SHA256).Hash`
+with `Get-Content .\ARCHIVE.zip.sha256` in PowerShell.
+
 Extract the archive and open a terminal in its single top-level directory.
 On Linux/macOS run:
 
@@ -14,8 +21,15 @@ On Linux/macOS run:
 ./serving hpo/vmis-serving.toml
 ```
 
-On Windows PowerShell use .\evaluator.exe, .\tpe_hyperparameter_optm.exe and
-.\serving.exe with the same arguments. The example performs three seeded trials.
+On Windows PowerShell run:
+
+```powershell
+.\evaluator.exe assets/example/workflows.toml vmis evaluation.json
+.\tpe_hyperparameter_optm.exe assets/example/workflows.toml vmis hpo
+.\serving.exe hpo/vmis-serving.toml
+```
+
+The example performs three seeded trials.
 Keep the working directory at the package root: all dataset paths are relative
 to it. TPE writes its selected model to hpo/vmis-serving.toml. Serving creates
 sessions.db and listens on port 8081. Request recommendations with:
@@ -23,6 +37,8 @@ sessions.db and listens on port 8081. Request recommendations with:
 ```sh
 curl 'http://localhost:8081/v1/recommend?item_id=13598&session_id=example&user_consent=true'
 ```
+
+In Windows PowerShell use `curl.exe` for the same request.
 
 Stop serving with Ctrl+C. Use a writable directory for results and sessions.db.
 The package verifier runs these operations from a fresh extracted archive,
@@ -33,7 +49,7 @@ model reproduces its validation score.
 
 - Windows x86_64: MSVC, ZIP; Windows Server 2022 runner, static C runtime.
 - Linux x86_64: GNU, tar.gz; Ubuntu 22.04 runner. Requires glibc 2.35 or newer
-  and the system C++ runtime (libstdc++6); this is not a musl/static Linux build.
+  and libstdc++6 providing GLIBCXX_3.4.30; this is not a musl/static Linux build.
 - macOS Intel x86_64: macos-15-intel, tar.gz.
 - macOS Apple Silicon aarch64: macos-15, tar.gz.
 
@@ -45,9 +61,8 @@ must pass before any archive is uploaded. Linux ARM64 is not provided.
 ## Validation and release maintenance
 
 In GitHub Actions select **Binary release**, **Run workflow**, and the feature
-branch. Once this workflow is on the default branch, GitHub enables manual
-dispatch. Pushes to release/** branches also run validation, allowing the workflow
-to be checked before merging it. Both paths build all four platforms without
+branch or **main** to validate the merged workflow. Pushes to release/** branches
+also run validation. Both paths build all four platforms without
 creating a GitHub release.
 Download serenade-* from the run's Artifacts section (requires GitHub sign-in).
 Unzip the Actions artifact wrapper to obtain the platform archive and its SHA-256
@@ -64,6 +79,13 @@ Existing releases are never overwritten. If upload fails, a draft can remain;
 inspect it, explicitly delete the incomplete draft, then rerun the workflow.
 A build failure cannot publish a partial release. Do not create release tags
 as part of validation.
+
+Manual validation exercises the downloaded-package workflow but skips the
+publication job. The tag trigger, cross-job artifact download, release-token
+permissions, draft creation, asset upload, and final publication still require
+an explicitly approved tagged release for end-to-end verification. Publication
+uses a draft to keep assets private until upload succeeds; it is not a
+transaction, and an interrupted publication can leave a draft for inspection.
 
 For local packaging after building the required target binaries:
 
