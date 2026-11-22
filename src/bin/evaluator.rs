@@ -5,9 +5,9 @@ use serenade::metrics::evaluation_reporter::EvaluationReporter;
 use serenade::stopwatch::Stopwatch;
 use serenade::vmisknn::vmis_index::VMISIndex;
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let config_path = std::env::args().nth(1).unwrap_or_default();
-    let config = AppConfig::new(config_path);
+    let config = AppConfig::try_new(config_path)?;
 
     let m_most_recent_sessions = config.model.m_most_recent_sessions;
     let neighborhood_size_k = config.model.neighborhood_size_k;
@@ -21,7 +21,7 @@ fn main() {
         config.model.idf_weighting as f64,
         &config.model.knn,
     )
-    .expect("Cannot load selected kNN model");
+    .map_err(anyhow::Error::msg)?;
 
     let test_data_file = config.hyperparam.test_data_path;
     println!("test_data_file:{}", test_data_file);
@@ -95,11 +95,8 @@ fn main() {
         stopwatch.get_percentile_in_micros(95.0)
     );
     println!(
-        "p99 (microseconds): {}",
-        stopwatch.get_percentile_in_micros(99.0)
-    );
-    println!(
         "p99.5 (microseconds): {}",
         stopwatch.get_percentile_in_micros(99.5)
     );
+    Ok(())
 }

@@ -56,7 +56,7 @@ One build/save/load per run, subject to OS cache effects; no confidence interval
 
 ## Reproduce
 
-From the feature worktree:
+From the canonical repository, `D:\git\serenade`:
 
 ```powershell
 cargo run --release --example knn_benchmark -- D:/git/serenade/assets/example/train.txt D:/git/serenade/assets/example/test.txt sknn target/sknn.vmis D:/git/serenade/assets/example/example.toml

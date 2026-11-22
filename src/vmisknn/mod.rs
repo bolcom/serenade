@@ -8,10 +8,8 @@ use crate::vmisknn::similarity_indexed::SimilarityComputationNew;
 use crate::vmisknn::vmis_index::ProductAttributes;
 
 pub mod algorithms;
-pub mod similarity_hashed;
 pub mod similarity_indexed;
 pub mod vmis_index;
-pub mod vsknn_index;
 
 #[derive(PartialEq, Debug)]
 pub struct SessionScore {
@@ -114,6 +112,7 @@ fn linear_score(pos: usize) -> f64 {
     }
 }
 
+/// Predict recommendations. Empty histories or zero k, m, or result limits return an empty heap.
 pub fn predict<I: SimilarityComputationNew + Send + Sync>(
     index: &I,
     evolving_session: &[u64],
@@ -122,12 +121,50 @@ pub fn predict<I: SimilarityComputationNew + Send + Sync>(
     how_many: usize,
     enable_business_logic: bool,
 ) -> BinaryHeap<ItemScore> {
+    predict_with_scratch(
+        index,
+        evolving_session,
+        k,
+        m,
+        how_many,
+        enable_business_logic,
+        &mut PredictionScratch::default(),
+    )
+}
+
+/// Buffers exclusively owned by one caller or prediction worker.
+#[derive(Default)]
+pub struct PredictionScratch {
+    pub(crate) neighbors: NeighborScratch,
+    item_scores: HashMap<u64, f64>,
+}
+
+#[derive(Default)]
+pub struct NeighborScratch {
+    pub(crate) timestamps: dary_heap::OctonaryHeap<SessionTime>,
+    pub(crate) similarities: HashMap<u32, f64>,
+    pub(crate) items: HashMap<u64, bool>,
+}
+
+pub fn predict_with_scratch<I: SimilarityComputationNew + Send + Sync>(
+    index: &I,
+    evolving_session: &[u64],
+    k: usize,
+    m: usize,
+    how_many: usize,
+    enable_business_logic: bool,
+    scratch: &mut PredictionScratch,
+) -> BinaryHeap<ItemScore> {
     if evolving_session.is_empty() || k == 0 || m == 0 || how_many == 0 {
         return BinaryHeap::new();
     }
-    let neighbors = index.find_neighbors(evolving_session, k, m);
+    let neighbors =
+        index.find_neighbors_with_scratch(evolving_session, k, m, &mut scratch.neighbors);
 
-    let mut item_scores: HashMap<u64, f64> = HashMap::with_capacity(1000);
+    let item_scores = &mut scratch.item_scores;
+    item_scores.clear();
+    // Match the original scoring capacity; reused buffers keep their allocation.
+    item_scores.reserve(1000);
 
     for scored_session in neighbors.into_iter() {
         let training_item_ids: &[u64] = index.items_for_session(&scored_session.id);
@@ -205,13 +242,13 @@ pub fn predict_with_model(
             }
         }
     }
-    rank_items(index, current, scores, how_many, enable_business_logic)
+    rank_items(index, current, &mut scores, how_many, enable_business_logic)
 }
 
 fn rank_items<I: SimilarityComputationNew>(
     index: &I,
     evolving_session: &[u64],
-    mut item_scores: HashMap<u64, f64>,
+    item_scores: &mut HashMap<u64, f64>,
     how_many: usize,
     enable_business_logic: bool,
 ) -> BinaryHeap<ItemScore> {
@@ -246,7 +283,7 @@ fn rank_items<I: SimilarityComputationNew>(
     // Return the proper amount of recommendations and filter them using business rules.
     let mut top_items: BinaryHeap<ItemScore> = BinaryHeap::with_capacity(how_many);
     let current_item_attribs: Option<&ProductAttributes> = index.find_attributes(&most_recent_item);
-    for (reco_item_id, reco_item_score) in item_scores.into_iter() {
+    for (reco_item_id, reco_item_score) in item_scores.drain() {
         let scored_item = ItemScore::new(reco_item_id, reco_item_score);
 
         if top_items.len() < how_many {
@@ -279,14 +316,39 @@ fn rank_items<I: SimilarityComputationNew>(
 
 #[cfg(test)]
 mod vmisknn_test {
-    use chrono::NaiveDateTime;
 
-    use crate::dataframeutils::TrainingDataStats;
     use crate::vmisknn::vmis_index::prepare_hashmap;
     use crate::vmisknn::vmis_index::VMISIndex;
 
     use super::*;
     use dary_heap::OctonaryHeap;
+
+    #[test]
+    fn empty_and_zero_limits_do_not_access_index() {
+        struct UnusedIndex;
+        impl SimilarityComputationNew for UnusedIndex {
+            fn items_for_session(&self, _: &u32) -> &[u64] {
+                panic!("unexpected access")
+            }
+            fn idf(&self, _: &u64) -> f64 {
+                panic!("unexpected access")
+            }
+            fn find_neighbors(&self, _: &[u64], _: usize, _: usize) -> BinaryHeap<SessionScore> {
+                panic!("unexpected access")
+            }
+            fn find_attributes(&self, _: &u64) -> Option<&ProductAttributes> {
+                panic!("unexpected access")
+            }
+        }
+        for (session, k, m, count) in [
+            (&[][..], 1, 1, 1),
+            (&[1][..], 0, 1, 1),
+            (&[1][..], 1, 0, 1),
+            (&[1][..], 1, 1, 0),
+        ] {
+            assert!(predict(&UnusedIndex, session, k, m, count, false).is_empty());
+        }
+    }
 
     #[test]
     fn should_train_and_predict() {
@@ -306,32 +368,13 @@ mod vmisknn_test {
         let historical_sessions_max_time_stamp =
             vec![session1_max_timestamp, session2_max_timestamp];
 
-        let training_data_stats = TrainingDataStats {
-            descriptive_name: "simple unittest".parse().unwrap(),
-            qty_records: historical_sessions_train.len() as usize,
-            qty_unique_session_ids: historical_sessions_max_time_stamp.len(),
-            qty_unique_item_ids: 5,
-            min_time_date_time: NaiveDateTime::from_timestamp(1, 0),
-            max_time_date_time: NaiveDateTime::from_timestamp(5, 0),
-            session_duration_p05: 30,
-            session_duration_p25: 30,
-            session_duration_p50: 30,
-            session_duration_p75: 30,
-            session_duration_p90: 30,
-            session_duration_p95: 35,
-            session_duration_p99: 40,
-            session_duration_p99_5: 50,
-            session_duration_p100: 100,
-            qty_events_p05: 3,
-            qty_events_p25: 3,
-            qty_events_p50: 3,
-            qty_events_p75: 3,
-            qty_events_p90: 3,
-            qty_events_p95: 3,
-            qty_events_p99: 3,
-            qty_events_p99_5: 5,
-            qty_events_p100: 5,
-        };
+        let raw_events: Vec<_> = historical_sessions_train
+            .iter()
+            .enumerate()
+            .flat_map(|(id, items)| items.iter().map(move |&item| (id as u32, item, 1)))
+            .collect();
+        let training_data_stats =
+            crate::dataframeutils::determine_training_data_statistics("test", &raw_events);
 
         let (item_to_top_sessions_ordered, item_to_idf_score, item_to_product_attributes) =
             prepare_hashmap(

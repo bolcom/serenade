@@ -219,17 +219,17 @@ SessionId       ItemId  Time
 # Join us <a name="join-us"></a>
 Anyone who interested in our project is welcome to join us. Let us build a wonderful open source community for this session-based recommender system!
 We are always looking for the developers that contribute core code (Rust and python) or specific algorithms to the Serenade Project.
-Example ideas for improvement are:
-add specific algorithms such as:
-* (STAN)[https://github.com/rn5l/session-rec/blob/master/algorithms/knn/stan.py] 
-* (V-STAN)[https://github.com/rn5l/session-rec/blob/master/algorithms/knn/vstan.py] 
-make hardcoded design choices configurable
-* let the user define the metric (MRR, Hitrate, NDCG etc) and its length for the evaluator.rs via the config file instead of hardcoded
-* improve the duration for the hyperparameter.rs for larger files. Right now it uses just one thread which takes 
-* let the user define the percentiles in the configuration file that should be printed when using the evaluator.rs
-and more!
+Serenade supports VMIS-kNN, SKNN, VS-KNN, STAN and V-STAN (`vsknn_stan`).
+See [algorithm configuration](docs/CONFIG.md), [training statistics and index migration](docs/Preparation.md),
+and [TPE optimization](docs/HYPERPARAMETER_SEARCH.md). TPE is the only supported hyperparameter optimizer.
+
 Please contact us.
 
 # License <a name="license"></a>
 This project is licensed under the terms of the [Apache 2.0 license](LICENSE.md).
+
+
+## Development workflow
+
+Use D:\git\serenade as the canonical working directory. Develop on normal feature branches, commit changes, and merge branches normally. Do not create Git worktrees, shadow copies, or parallel checkouts unless explicitly requested.
 

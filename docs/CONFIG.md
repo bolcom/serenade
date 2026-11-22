@@ -86,7 +86,7 @@ Scoring options under `[model.knn]`:
 | lambda_ipw | VSKNN_STAN | 1.02; latest matching current-position decay |
 | lambda_idf | VSKNN_STAN | 5; additive score IDF multiplier |
 
-Set a lambda to `none` to disable its component. Decay lambdas must be positive finite numbers. Legacy `[model] idf_weighting` remains integer/default 1; it is separate from reference IDF. Existing optimization programs use the selected algorithm and scoring config; the existing IDF search axis maps to VS-KNN idf_weighting or VSKNN_STAN lambda_idf. It has no effect for SKNN/STAN. Other scoring settings remain fixed during these searches. The standalone hyperparameter_search accepts an optional third config path.
+Set a lambda to `none` to disable its component. Decay lambdas must be positive finite numbers. Legacy `[model] idf_weighting` remains integer/default 1; it is separate from reference IDF. TPE uses the selected algorithm and scoring config; the existing IDF search axis maps to VS-KNN idf_weighting or VSKNN_STAN lambda_idf. It has no effect for SKNN/STAN. Other scoring settings remain configurable and fixed during TPE searches. TPE is the only supported optimizer.
 
 Build/load a chronological snapshot:
 
@@ -94,4 +94,4 @@ Build/load a chronological snapshot:
 cargo run --release --bin build_index -- CONFIG OUTPUT.vmis
 ```
 
-Set `data.training_data_path` to OUTPUT.vmis for serving/evaluation. Hyperparameter data paths can also reference snapshots; build with at least the maximum candidate budget searched. Existing required hyperparameter config fields still apply. Old Avro indexes support set-based scoring, but positional scoring and reference event-frequency IDF require rebuilding from CSV. See [compatibility and migration](knn-compatibility.md) and [measured results](knn-benchmark.md), including explicitly unsupported optional Python extensions.
+Set `data.training_data_path` to OUTPUT.vmis for serving/evaluation. Hyperparameter data paths can also reference snapshots; build with at least the maximum candidate budget searched. Existing required hyperparameter config fields still apply. Avro indexes require raw training aggregate metadata (`training-stats.bin`; see [Preparation](Preparation.md)) and support set-based scoring, but positional scoring and reference event-frequency IDF require rebuilding from CSV. See [compatibility and migration](knn-compatibility.md) and [measured results](knn-benchmark.md), including explicitly unsupported optional Python extensions.

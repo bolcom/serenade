@@ -60,13 +60,6 @@ pub fn read_test_data_timed(
     sessions
 }
 
-pub fn read_test_data_evolving(test_data_file: &str) -> HashMap<TrainingSessionId, Vec<ItemId>> {
-    read_test_data_timed(test_data_file)
-        .into_iter()
-        .map(|(id, events)| (id, events.into_iter().map(|(item, _)| item).collect()))
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     #[test]

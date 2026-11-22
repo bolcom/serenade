@@ -11,8 +11,6 @@ pub struct Coverage {
     length: usize,
 }
 
-impl Coverage {}
-
 impl Coverage {
     pub fn new(training_df: &[(TrainingSessionId, ItemId, Time)], length: usize) -> Coverage {
         Self::from_items(training_df.iter().map(|row| row.1), length)

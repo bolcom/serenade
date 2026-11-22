@@ -3,7 +3,6 @@ use std::time::Instant;
 use tdigest::TDigest;
 
 #[derive(Clone)]
-#[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 pub struct Stopwatch {
     start_time: Instant,
     prediction_durations: Vec<PositionDurationMicros>,
@@ -49,10 +48,6 @@ impl Stopwatch {
             .collect();
         let sorted_digest = t_digest.merge_unsorted(durations);
         sorted_digest.estimate_quantile(q / 100.0)
-    }
-
-    pub fn get_raw_durations(&mut self) -> Vec<PositionDurationMicros> {
-        self.prediction_durations.clone()
     }
 }
 

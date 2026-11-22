@@ -505,7 +505,7 @@ mod reference_tests {
                     }
                 }
             }
-            let ranked = super::super::rank_items(&index, &current, ranked_scores, 20, false)
+            let ranked = super::super::rank_items(&index, &current, &mut ranked_scores, 20, false)
                 .into_sorted_vec();
             let expected: Vec<u64> = f[18].split(',').map(|s| s.parse().unwrap()).collect();
             assert_eq!(ranked.len(), expected.len());

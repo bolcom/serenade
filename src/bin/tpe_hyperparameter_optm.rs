@@ -1,4 +1,4 @@
-use rand::{thread_rng, SeedableRng as _};
+use rand::thread_rng;
 use serenade::config::AppConfig;
 use serenade::objective;
 use std::cmp::min;
@@ -7,12 +7,11 @@ use std::sync::{Arc, Mutex};
 
 use indicatif::ProgressBar;
 
-extern crate csv;
 use csv::Writer;
 use itertools::Itertools;
 use rayon::prelude::*;
 
-pub fn convert_string_to_vec_i32(s: String) -> Vec<i32> {
+fn convert_string_to_vec_i32(s: String) -> Vec<i32> {
     return s
         .replace(&['[', ']'][..], "")
         .chars()
@@ -23,10 +22,10 @@ pub fn convert_string_to_vec_i32(s: String) -> Vec<i32> {
         .collect();
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     // get params from config file
     let config_path = std::env::args().nth(1).expect("Config file not specified!");
-    let config = AppConfig::new(config_path);
+    let config = AppConfig::try_new(config_path)?;
     let training_data_path = config.hyperparam.training_data_path;
     let test_data_path = config.hyperparam.test_data_path;
     let validation_data_path = config.hyperparam.validation_data_path;
@@ -61,22 +60,22 @@ fn main() {
     let wtr_mutex = Arc::new(Mutex::new(wtr));
     /*
     Each instance of TpeOptimizer tries to search out the value
-    which could minimize/maximize the evaluation result
+    which minimizes the supplied loss (negative MRR)
     for such hyperparameter.
     */
-    let mut optim0 =
+    let optim0 =
             // n most recent sessions
         Arc::new(Mutex::new(tpe::TpeOptimizer::new(tpe::parzen_estimator(), tpe::range(n_most_recent_sessions_range.first().unwrap().clone() as f64, n_most_recent_sessions_range.last().unwrap().clone() as f64).unwrap())));
 
-    let mut optim1 =
+    let optim1 =
             // neighbourhood size k
         Arc::new(Mutex::new(tpe::TpeOptimizer::new(tpe::parzen_estimator(), tpe::range(neighborhood_size_k_range.first().unwrap().clone() as f64, neighborhood_size_k_range.last().unwrap().clone() as f64).unwrap())));
 
-    let mut optim2 =
+    let optim2 =
             // last items from session
         Arc::new(Mutex::new(tpe::TpeOptimizer::new(tpe::parzen_estimator(), tpe::range(last_items_in_session_range.first().unwrap().clone() as f64, last_items_in_session_range.last().unwrap().clone() as f64).unwrap())));
 
-    let mut optim3 =
+    let optim3 =
         // last items from session
         Arc::new(Mutex::new(tpe::TpeOptimizer::new(tpe::parzen_estimator(), tpe::range(idf_weighting_range.first().unwrap().clone() as f64, idf_weighting_range.last().unwrap().clone() as f64).unwrap())));
 
@@ -85,7 +84,7 @@ fn main() {
     println!("===============================================================");
 
     // mutable variables
-    let mut best_value = Arc::new(Mutex::new(f64::NEG_INFINITY));
+    let best_value = Arc::new(Mutex::new(f64::NEG_INFINITY));
 
     // optimization loop for num_iterations
     (0..num_iterations).into_par_iter().for_each(|_| {
@@ -142,7 +141,7 @@ fn main() {
             wtr_locked.flush().unwrap();
         }
 
-        // Tells the evaluation result of a hyperparameter
+        // TPE minimizes its objective: negate MRR to maximize recommendation quality.
         // value to the optimizer
         let optim0_clone = Arc::clone(&optim0);
         let optim1_clone = Arc::clone(&optim1);
@@ -152,19 +151,23 @@ fn main() {
         optim0_clone
             .lock()
             .unwrap()
-            .tell(n_most_recent_sessions, v)
+            .tell(n_most_recent_sessions, -v)
             .unwrap();
         optim1_clone
             .lock()
             .unwrap()
-            .tell(neighborhood_size_k, v)
+            .tell(neighborhood_size_k, -v)
             .unwrap();
         optim2_clone
             .lock()
             .unwrap()
-            .tell(last_items_in_session, v)
+            .tell(last_items_in_session, -v)
             .unwrap();
-        optim3_clone.lock().unwrap().tell(idf_weighting, v).unwrap();
+        optim3_clone
+            .lock()
+            .unwrap()
+            .tell(idf_weighting, -v)
+            .unwrap();
 
         // update current best_value
         let mut best_value_locked = best_value_clone.lock().unwrap();
@@ -188,7 +191,7 @@ fn main() {
         .trials()
         .collect_vec()
         .into_iter()
-        .find(|(_value, score)| score == &final_best_value)
+        .find(|(_value, score)| score == &-final_best_value)
         .map(|(value, _score)| value as i32)
         .unwrap();
     let neighborhood_size_k = optim1
@@ -197,7 +200,7 @@ fn main() {
         .trials()
         .collect_vec()
         .into_iter()
-        .find(|(_value, score)| score == &final_best_value)
+        .find(|(_value, score)| score == &-final_best_value)
         .map(|(value, _score)| value as i32)
         .unwrap();
     let neighborhood_size_k = min(neighborhood_size_k, n_most_recent_sessions);
@@ -207,7 +210,7 @@ fn main() {
         .trials()
         .collect_vec()
         .into_iter()
-        .find(|(_value, score)| score == &final_best_value)
+        .find(|(_value, score)| score == &-final_best_value)
         .map(|(value, _score)| value as i32)
         .unwrap();
     let idf_weighting = optim3
@@ -216,7 +219,7 @@ fn main() {
         .trials()
         .collect_vec()
         .into_iter()
-        .find(|(_value, score)| score == &final_best_value)
+        .find(|(_value, score)| score == &-final_best_value)
         .map(|(value, _score)| value.floor())
         .unwrap();
 
@@ -253,4 +256,6 @@ fn main() {
 
     println!("HPO done");
     stdout().flush().unwrap();
+
+    Ok(())
 }

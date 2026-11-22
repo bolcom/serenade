@@ -1,0 +1,31 @@
+{
+  "archive": "assets\\example\\example.zip",
+  "seed": 42,
+  "factor": 100,
+  "source_sessions": 23753,
+  "source_interactions": 113601,
+  "scaled_sessions": 2375300,
+  "scaled_interactions": 11360100,
+  "catalog_items": 18009,
+  "heldout_prediction_prefixes": 2052,
+  "session_length_percentiles": {
+    "50": 3,
+    "90": 9,
+    "95": 13,
+    "99": 22,
+    "99.5": 28,
+    "100": 196
+  },
+  "top_1_percent_item_interaction_share": 0.09381959665848012,
+  "method": "Exact whole-session replication, shuffled per copy; fixed observed catalog. Empirical marginals and co-occurrence preserved; no unseen tail extrapolated.",
+  "archive_sha256": "07da0ca33ae1e672c7abb41b333ba8abd872048d41b9e1f3e229e97e7d87909b",
+  "query_length_percentiles": {
+    "50": 2,
+    "90": 9,
+    "95": 15,
+    "99": 81,
+    "100": 102
+  },
+  "queries_with_unknown_current_item": 0,
+  "queries_with_no_known_items": 0
+}

@@ -1,5 +1,3 @@
-extern crate serenade;
-
 use sessions::RocksDBSessionStore;
 
 use actix_web::{
@@ -21,7 +19,8 @@ use serenade::vmisknn::vmis_index::VMISIndex;
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let config_path = std::env::args().nth(1).unwrap_or_default();
-    let config = AppConfig::new(config_path);
+    let config = AppConfig::try_new(config_path)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
 
     let bind_address = format!("{}:{}", config.server.host, config.server.port);
     let m_most_recent_sessions = config.model.m_most_recent_sessions;
@@ -39,13 +38,56 @@ async fn main() -> std::io::Result<()> {
             config.model.idf_weighting as f64,
             &config.model.knn,
         )
-        .expect("Cannot load selected kNN model"),
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?,
     );
     let knn = config.model.knn.clone();
 
     println!("start db");
     let session_ttl = Duration::from_secs(30 * 60);
-    let db = Arc::new(RocksDBSessionStore::new("./sessions.db", session_ttl));
+    let db = Arc::new(
+        RocksDBSessionStore::try_new("./sessions.db", session_ttl)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error))?,
+    );
+
+    // Inline remains the default until representative benchmarks justify offloading.
+    let executor = match std::env::var("PREDICTION_EXECUTOR").as_deref() {
+        Err(std::env::VarError::NotPresent) | Ok("inline") => None,
+        Ok("blocking") => {
+            let positive = |key: &str, default: usize| -> std::io::Result<usize> {
+                let value = match std::env::var(key) {
+                    Ok(value) => value.parse::<usize>().map_err(|error| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            format!("{}: {}", key, error),
+                        )
+                    })?,
+                    Err(std::env::VarError::NotPresent) => default,
+                    Err(error) => {
+                        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, error))
+                    }
+                };
+                if value == 0 {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("{} must be positive", key),
+                    ));
+                }
+                Ok(value)
+            };
+            let threads = positive("PREDICTION_THREADS", qty_workers)?;
+            let capacity = positive("PREDICTION_QUEUE_CAPACITY", threads.saturating_mul(2))?;
+            Some(web::Data::new(
+                serenade::executor::BlockingExecutor::new(threads, capacity)
+                    .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error))?,
+            ))
+        }
+        _ => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "PREDICTION_EXECUTOR must be inline or blocking",
+            ))
+        }
+    };
 
     println!("start metrics");
     let prometheus = PrometheusMetrics::new("api", Some("/internal/prometheus"), None);
@@ -66,8 +108,11 @@ async fn main() -> std::io::Result<()> {
             example_item_id,
         };
 
-        App::new()
-            .wrap(middleware::Compress::new(ContentEncoding::Identity))
+        let mut app = App::new().data(handles_and_config);
+        if let Some(executor) = &executor {
+            app = app.app_data(executor.clone());
+        }
+        app.wrap(middleware::Compress::new(ContentEncoding::Identity))
             .wrap(prometheus.clone())
             .wrap(
                 middleware::DefaultHeaders::new()
@@ -75,7 +120,6 @@ async fn main() -> std::io::Result<()> {
                     .header("Pragma", "no-cache")
                     .header("Expires", "0"),
             )
-            .data(handles_and_config)
             .service(v1_recommend)
             .service(internal)
             .service(web::resource("/").route(web::get().to(|_req: HttpRequest| {
@@ -86,7 +130,12 @@ async fn main() -> std::io::Result<()> {
     })
     .workers(config.server.num_workers)
     .bind(&bind_address)
-    .unwrap_or_else(|_| panic!("Could not bind server to address {}", &bind_address))
+    .map_err(|error| {
+        std::io::Error::new(
+            error.kind(),
+            format!("bind server to {}: {}", bind_address, error),
+        )
+    })?
     .run()
     .await
 }

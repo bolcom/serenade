@@ -4,27 +4,6 @@ use crate::metrics::mrr::Mrr;
 use crate::metrics::SessionMetric;
 use crate::vmisknn::vmis_index::VMISIndex;
 
-pub fn objective(
-    path_to_training: std::string::String,
-    test_data_file: std::string::String,
-    n_most_recent_sessions: i32,
-    neighborhood_size_k: i32,
-    last_items_in_session: i32,
-    idf_weighting: f64,
-    enable_business_logic: bool,
-) -> f64 {
-    objective_with_model(
-        path_to_training,
-        test_data_file,
-        n_most_recent_sessions,
-        neighborhood_size_k,
-        last_items_in_session,
-        idf_weighting,
-        enable_business_logic,
-        &crate::vmisknn::algorithms::KnnConfig::default(),
-    )
-}
-
 // objective function
 pub fn objective_with_model(
     path_to_training: std::string::String,
@@ -83,8 +62,8 @@ pub fn objective_with_model(
                     .iter()
                     .map(|scored| scored.id)
                     .collect::<Vec<u64>>();
-                let actual_next_items = Vec::from(&evolving_session_items[session_state..]);
-                mymetric.add(&recommended_items, &actual_next_items);
+                let actual_next_items = &evolving_session_items[session_state..];
+                mymetric.add(&recommended_items, actual_next_items);
             }
         });
     return mymetric.result();
