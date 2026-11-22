@@ -57,6 +57,7 @@ pub struct LogicConfig {
 }
 
 pub struct AlgorithmSearchConfig {
+    pub choices: std::collections::BTreeMap<String, String>,
     pub enabled: bool,
     pub ranges: std::collections::BTreeMap<String, String>,
 }
@@ -301,9 +302,29 @@ impl HyperparamConfig {
                     ranges.insert(name.to_owned(), value);
                 }
             }
+            let mut choices = std::collections::BTreeMap::new();
+            for name in [
+                "similarity",
+                "weighting",
+                "weighting_score",
+                "weighting_time",
+                "idf_weighting_session",
+                "remind",
+                "normalize",
+            ] {
+                if let Some(value) = knn_value(conf, &algorithm_path, &format!("{}_choices", name))?
+                {
+                    multi_algorithm = true;
+                    choices.insert(name.to_owned(), value);
+                }
+            }
             algorithms.insert(
                 algorithm.name().to_owned(),
-                AlgorithmSearchConfig { enabled, ranges },
+                AlgorithmSearchConfig {
+                    enabled,
+                    ranges,
+                    choices,
+                },
             );
         }
         Ok(HyperparamConfig {

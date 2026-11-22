@@ -10,6 +10,7 @@ use std::{collections::BTreeMap, path::Path};
 struct Axis {
     name: &'static str,
     integer: bool,
+    choices: Vec<serde_json::Value>,
     optimizer: tpe::TpeOptimizer,
 }
 fn range(text: &str, integer: bool, positive: bool) -> anyhow::Result<(f64, f64)> {
@@ -40,6 +41,7 @@ fn range(text: &str, integer: bool, positive: bool) -> anyhow::Result<(f64, f64)
 struct Search {
     axes: Vec<Axis>,
     max_m: usize,
+    choices: BTreeMap<String, Vec<serde_json::Value>>,
     ranges: BTreeMap<String, (f64, f64)>,
 }
 
@@ -123,18 +125,102 @@ fn axes(config: &AppConfig, algorithm: Algorithm) -> anyhow::Result<Search> {
         axes.push(Axis {
             name,
             integer,
+            choices: Vec::new(),
             optimizer: tpe::TpeOptimizer::new(
                 tpe::parzen_estimator(),
                 tpe::range(low, if integer { high + 1.0 } else { high })?,
             ),
         });
     }
+    let mut choices = BTreeMap::new();
+    for (name, allowed) in categorical_specs(algorithm) {
+        let configured = h.algorithms[algorithm.name()].choices.get(name);
+        // Normalization only rescales scores; keep it fixed unless explicitly requested.
+        if name == "normalize" && configured.is_none() {
+            continue;
+        }
+        let values = if let Some(text) = configured {
+            let values: Vec<serde_json::Value> = serde_json::from_str(text)
+                .map_err(|e| anyhow::anyhow!("{}.{}_choices: {}", algorithm.name(), name, e))?;
+            anyhow::ensure!(!values.is_empty(), "{}_choices must not be empty", name);
+            for (i, value) in values.iter().enumerate() {
+                anyhow::ensure!(
+                    allowed.contains(value),
+                    "invalid {} choice: {}",
+                    name,
+                    value
+                );
+                anyhow::ensure!(
+                    !values[..i].contains(value),
+                    "duplicate {} choice: {}",
+                    name,
+                    value
+                );
+            }
+            values
+        } else {
+            allowed
+        };
+        axes.push(Axis {
+            name,
+            integer: false,
+            choices: values.clone(),
+            optimizer: tpe::TpeOptimizer::new(
+                tpe::histogram_estimator(),
+                tpe::categorical_range(values.len())?,
+            ),
+        });
+        choices.insert(name.to_owned(), values);
+    }
     Ok(Search {
+        choices,
         axes,
         max_m,
         ranges,
     })
 }
+fn categorical_specs(algorithm: Algorithm) -> Vec<(&'static str, Vec<serde_json::Value>)> {
+    let strings = |values: &[&str]| values.iter().map(|v| json!(v)).collect();
+    let mut specs = Vec::new();
+    if algorithm != Algorithm::Vmis {
+        specs.push(("normalize", vec![json!(false), json!(true)]));
+        specs.push(("remind", vec![json!(false), json!(true)]));
+    }
+    match algorithm {
+        Algorithm::Sknn => specs.push((
+            "similarity",
+            strings(&["jaccard", "cosine", "tanimoto", "binary"]),
+        )),
+        Algorithm::Vsknn => {
+            specs.push(("similarity", strings(&["vec", "cosine"])));
+            for name in ["weighting", "weighting_score"] {
+                specs.push((
+                    name,
+                    strings(&["same", "linear", "div", "log", "quadratic"]),
+                ));
+            }
+            for name in ["weighting_time", "idf_weighting_session"] {
+                specs.push((name, vec![json!(false), json!(true)]));
+            }
+        }
+        _ => {}
+    }
+    specs
+}
+
+fn apply_choice(model: &mut ModelConfig, name: &str, value: &serde_json::Value) {
+    match name {
+        "similarity" => model.knn.similarity = value.as_str().unwrap().parse().unwrap(),
+        "weighting" => model.knn.weighting = value.as_str().unwrap().parse().unwrap(),
+        "weighting_score" => model.knn.weighting_score = value.as_str().unwrap().parse().unwrap(),
+        "weighting_time" => model.knn.weighting_time = value.as_bool().unwrap(),
+        "idf_weighting_session" => model.knn.idf_weighting_session = value.as_bool().unwrap(),
+        "remind" => model.knn.remind = value.as_bool().unwrap(),
+        "normalize" => model.knn.normalize = value.as_bool().unwrap(),
+        _ => unreachable!(),
+    }
+}
+
 fn apply(model: &mut ModelConfig, name: &str, value: f64) {
     match name {
         "m_most_recent_sessions" => model.m_most_recent_sessions = value as usize,
@@ -235,7 +321,10 @@ fn main() -> anyhow::Result<()> {
     let mut comparison = Vec::new();
     for (base, search) in models.into_iter().zip(searches) {
         let Search {
-            mut axes, ranges, ..
+            mut axes,
+            ranges,
+            choices,
+            ..
         } = search;
         let algorithm = base.knn.algorithm.name();
         let mut rng = StdRng::seed_from_u64(config.hyperparam.seed);
@@ -253,16 +342,22 @@ fn main() -> anyhow::Result<()> {
             let mut parameters = BTreeMap::new();
             for axis in &mut axes {
                 let sample = axis.optimizer.ask(&mut rng)?;
-                let value = if axis.integer { sample.floor() } else { sample };
-                apply(&mut model, axis.name, value);
-                parameters.insert(
-                    axis.name,
-                    if axis.integer {
-                        json!(value as usize)
-                    } else {
-                        json!(value)
-                    },
-                );
+                if axis.choices.is_empty() {
+                    let value = if axis.integer { sample.floor() } else { sample };
+                    apply(&mut model, axis.name, value);
+                    parameters.insert(
+                        axis.name,
+                        if axis.integer {
+                            json!(value as usize)
+                        } else {
+                            json!(value)
+                        },
+                    );
+                } else {
+                    let value = axis.choices[sample as usize].clone();
+                    apply_choice(&mut model, axis.name, &value);
+                    parameters.insert(axis.name, value);
+                }
                 samples.push(sample);
             }
             // A neighborhood cannot exceed the retrieved candidate budget.
@@ -323,7 +418,7 @@ fn main() -> anyhow::Result<()> {
             serde_json::to_value(&reloaded.model)? == serde_json::to_value(&best_model)?,
             "generated configuration did not reload"
         );
-        let mut result = json!({"algorithm":algorithm, "objective":objective.to_string(), "best_hyperparameters":best_parameters, "best_validation_score":best_score, "optimization":{"optimizer":"TPE", "iterations":config.hyperparam.num_trials, "seed":config.hyperparam.seed, "ranges":ranges, "objective":format!("maximize {}", objective)}, "evaluation":{"training_data":training, "validation_data":config.hyperparam.validation_data_path, "test_data":config.hyperparam.test_data_path, "cutoff":objective.cutoff(), "business_logic":config.hyperparam.enable_business_logic}, "model_config":snippet, "trials":trials});
+        let mut result = json!({"algorithm":algorithm, "objective":objective.to_string(), "best_hyperparameters":best_parameters, "best_validation_score":best_score, "optimization":{"optimizer":"TPE", "iterations":config.hyperparam.num_trials, "seed":config.hyperparam.seed, "ranges":ranges, "choices":choices, "objective":format!("maximize {}", objective)}, "evaluation":{"training_data":training, "validation_data":config.hyperparam.validation_data_path, "test_data":config.hyperparam.test_data_path, "cutoff":objective.cutoff(), "business_logic":config.hyperparam.enable_business_logic}, "model_config":snippet, "trials":trials});
         if objective == Default::default() {
             result["best_validation_mrr_at_20"] = json!(best_score);
         }
@@ -358,6 +453,74 @@ fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn categorical_search_validates_samples_and_preserves_types() {
+        let path =
+            std::env::temp_dir().join(format!("serenade-choices-{}.toml", std::process::id()));
+        std::fs::write(
+            &path,
+            r#"[hyperparam]
+training_data_path = "train.tsv"
+[hyperparam.algorithms.vsknn]
+similarity_choices = ["cosine"]
+normalize_choices = [false, true]
+"#,
+        )
+        .unwrap();
+        let mut config = AppConfig::try_new(path.to_string_lossy().into_owned()).unwrap();
+        std::fs::remove_file(path).unwrap();
+        assert!(config.hyperparam.multi_algorithm);
+        let mut search = axes(&config, Algorithm::Vsknn).unwrap();
+        assert_eq!(search.choices["similarity"], vec![json!("cosine")]);
+        let mut rng = StdRng::seed_from_u64(42);
+        let mut seen = BTreeMap::<&str, Vec<serde_json::Value>>::new();
+        let mut model = config.model.clone();
+        model.knn = serenade::vmisknn::algorithms::KnnConfig::for_algorithm(Algorithm::Vsknn);
+        for trial in 0..50 {
+            for axis in &mut search.axes {
+                let sample = axis.optimizer.ask(&mut rng).unwrap();
+                if !axis.choices.is_empty() {
+                    let value = &axis.choices[sample as usize];
+                    apply_choice(&mut model, axis.name, value);
+                    let values = seen.entry(axis.name).or_default();
+                    if !values.contains(value) {
+                        values.push(value.clone());
+                    }
+                }
+                axis.optimizer.tell(sample, trial as f64).unwrap();
+            }
+            model.knn.validate().unwrap();
+        }
+        assert_eq!(seen["normalize"].len(), 2);
+        assert_eq!(seen["weighting"].len(), 5);
+        assert_eq!(
+            model.knn.similarity,
+            serenade::vmisknn::algorithms::Similarity::Cosine
+        );
+        for text in [
+            "[]",
+            "[true]",
+            "[\"jaccard\"]",
+            "[\"vec\", \"vec\"]",
+            "invalid",
+        ] {
+            config
+                .hyperparam
+                .algorithms
+                .get_mut("vsknn")
+                .unwrap()
+                .choices
+                .insert("similarity".into(), text.into());
+            assert!(axes(&config, Algorithm::Vsknn).is_err(), "{}", text);
+        }
+        for algorithm in Algorithm::ALL {
+            let specs = categorical_specs(algorithm);
+            if !matches!(algorithm, Algorithm::Sknn | Algorithm::Vsknn) {
+                assert!(!specs.iter().any(|(name, _)| *name == "similarity"));
+            }
+        }
+    }
 
     #[test]
     fn objectives_select_different_trials_using_existing_metrics() {
@@ -415,7 +578,8 @@ mod tests {
 
     #[test]
     fn algorithm_ranges_override_shared_defaults_and_exclude_unused_axes() {
-        let path = std::env::temp_dir().join(format!("serenade-range-test-{}.toml", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("serenade-range-test-{}.toml", std::process::id()));
         std::fs::write(&path, "[hyperparam]\ntraining_data_path = \"train.tsv\"\n[hyperparam.algorithms.stan]\nenabled = true\n").unwrap();
         let mut config = AppConfig::try_new(path.to_string_lossy().into_owned()).unwrap();
         std::fs::remove_file(path).unwrap();

@@ -1,6 +1,6 @@
 ﻿# Configuration
 
-Start with `configs/hpo.toml` in the extracted package. HPO generates a complete TOML for each enabled algorithm; pass that file unchanged to `evaluator` and `serving`.
+Start with `configs/hpo.toml` in the extracted package. The template in `assets/example/example.zip` explicitly lists every applicable HPO range and categorical choice for all five algorithms, with workflow commands and editing guidance. HPO generates a complete TOML for each enabled algorithm; pass that file unchanged to `evaluator` and `serving`.
 
 ## Hyperparameter optimization
 
@@ -53,6 +53,29 @@ lambda_inh_range = [0.1, 10.0]
 ```
 
 Integer ranges include both endpoints and require positive integers. Decay lambdas must be positive; IDF weights and popularity boost allow zero. Keep lower bounds at or below upper bounds. Use `num_trials` for the trial budget; `num_iterations` is no longer accepted.
+
+Categorical parameters use TPE histogram estimators and are searched by default where the algorithm uses them:
+
+| Algorithm | Parameters and default choices |
+| --- | --- |
+| `sknn` | `similarity`: `jaccard`, `cosine`, `tanimoto`, `binary`; `remind`: false, true |
+| `vsknn` | `similarity`: `vec`, `cosine`; `weighting` and `weighting_score`: `same`, `linear`, `div`, `log`, `quadratic`; `weighting_time`, `idf_weighting_session`, `remind`: false, true |
+| `stan`, `vsknn_stan` | `remind`: false, true |
+
+Restrict choices in the algorithm's section using a `_choices` suffix. A single choice fixes that parameter. String choices require double quotes; booleans are unquoted. Empty lists, duplicates, and unsupported choices are rejected. Parameters unused by an algorithm are excluded, as with numeric ranges.
+
+```toml
+[hyperparam.algorithms.vsknn]
+similarity_choices = ["vec", "cosine"]
+weighting_choices = ["same", "div", "quadratic"]
+weighting_score_choices = ["div", "log"]
+weighting_time_choices = [false, true]
+idf_weighting_session_choices = [false, true]
+remind_choices = [false]
+normalize_choices = [true]
+```
+
+`normalize_choices` is available for SKNN, VS-KNN, STAN, and VS-KNN-STAN but is only searched when explicitly configured: normalization rescales scores and usually leaves ranking objectives unchanged. VMIS uses its own scoring path, so the other categorical parameters do not apply to it. Selected choices retain their string/boolean types in trial logs, results, and generated model configs; results also record the candidate lists under `optimization.choices`. The expanded search space may need a larger `num_trials` budget.
 
 ## Evaluation and serving
 

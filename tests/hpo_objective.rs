@@ -106,6 +106,17 @@ fn all_algorithms_optimize_selected_metric_and_generate_usable_models() {
             .unwrap();
             assert_eq!(model.hyperparam.objective, objective);
             assert_eq!(model.model.num_items_to_recommend, 37);
+            let selected = serde_json::to_value(&model.model.knn).unwrap();
+            for (name, choices) in result["optimization"]["choices"].as_object().unwrap() {
+                assert_eq!(selected[name], best["hyperparameters"][name]);
+                for trial in trials {
+                    assert!(choices
+                        .as_array()
+                        .unwrap()
+                        .contains(&trial["hyperparameters"][name]));
+                }
+            }
+
             let index = VMISIndex::load_for_model(
                 &model.data.training_data_path,
                 model.model.m_most_recent_sessions,
