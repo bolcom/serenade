@@ -12,9 +12,11 @@
 
 Serenade is an open-source, high-performance session-based recommendation system developed through academic research in collaboration between **[bol.com](https://www.bol.com/) and the [University of Amsterdam (AIRLab)](https://icai.ai/airlab/)**. The system was introduced in our [**SIGMOD 2022 paper, *Serenade: Low-Latency Session-Based Recommendation in e-Commerce at Scale***](https://doi.org/10.1145/3514221.3517901).
 
-At its core, Serenade introduces **VMIS-kNN**, an efficient and scalable adaptation of **VS-KNN**, a state-of-the-art session-based nearest-neighbor recommendation algorithm. By capturing short-term user behavior and sequential interaction patterns, Serenade predicts relevant next items without requiring long-term user profiles.
+The research introduces two complementary contributions:
 
-VMIS-kNN combines efficient indexing data structures with an optimized neighbor retrieval algorithm to enable fast recommendations across catalogs containing millions of distinct items and interaction histories comprising billions of events.
+VMIS-kNN — Scalable recommendation algorithm. An efficient adaptation of the state-of-the-art VS-KNN algorithm. VMIS-kNN introduces specialized indexing data structures and an optimized neighbor retrieval algorithm using bounded candidate selection and early stopping. With fixed retrieval parameters, the computational complexity of candidate retrieval depends on the length of the evolving session rather than the size of the historical training corpus, enabling low-latency recommendations across billions of interactions.
+
+Serenade — Production recommendation system. A scalable, stateful recommendation service built around VMIS-kNN, combining real-time session management, low-latency recommendation serving, and efficient resource utilization. Originally deployed at bol.com, Serenade demonstrates that high-quality session-based nearest-neighbor recommendations can operate at industrial scale with low latency and modest computational resources.
 
 ## Performance at scale
 
@@ -30,21 +32,13 @@ These results demonstrate how carefully designed algorithms and data structures 
 
 *These performance figures originate from the original SIGMOD 2022 research and production deployment of VMIS-kNN. They do not represent benchmark results for all algorithms supported by the extended Serenade implementation.*
 
-## Extending VMIS-kNN to other session-based kNN algorithms
+## Extending Serenade with additional scalable kNN algorithms
 
 Building on the original VMIS-kNN research, **we have adapted four additional established session-based kNN algorithms to benefit from VMIS's scalable indexing and efficient neighbor retrieval approach**.
 
-The extension supports five algorithms:
+The extension includes SKNN, VS-KNN, STAN, and VSKNN-STAN:
 
-| Algorithm | Description |
-| --- | --- |
-| **VMIS-kNN** (`vmis`) | Serenade's original scalable adaptation of VS-KNN, retaining its optimized neighbor retrieval and original scoring method. |
-| **SKNN** (`sknn`) | Traditional session-based nearest neighbors using set-based similarity and neighbor voting. |
-| **VS-KNN** (`vsknn`) | Reference-style vector-based session similarity and position-aware scoring, adapted to VMIS retrieval. |
-| **STAN** (`stan`) | Sequence- and time-aware kNN incorporating session recency and item-position information. |
-| **VSKNN-STAN** (`vsknn_stan`) | Combines sequence, temporal, and position-aware scoring with additional IDF weighting. |
-
-Beyond simply implementing additional algorithms, **We adapt their neighbor retrieval to VMIS's bounded, recency-ordered index and early-stopping strategy**, while preserving their distinctive scoring methods. With fixed retrieval limits, candidate retrieval scales with the length of the evolving session rather than the size of the training corpus, enabling these algorithms to benefit from VMIS's scalability.
+**We adapt their neighbor retrieval to VMIS's bounded, recency-ordered index and early-stopping strategy**, while preserving their distinctive scoring methods. With fixed retrieval limits, candidate retrieval scales with the length of the evolving session rather than the size of the training corpus, enabling these kNN algorithms to benefit from VMIS's scalability.
 
 ## What Serenade offers
 
