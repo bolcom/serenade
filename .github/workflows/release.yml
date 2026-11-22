@@ -67,7 +67,7 @@ jobs:
         run: python scripts/package_release.py --target ${{ matrix.target }} --platform ${{ matrix.platform }} --version ${{ env.PACKAGE_VERSION }}
       - uses: actions/upload-artifact@v7
         with:
-          name: binaries-${{ matrix.platform }}
+          name: serenade-${{ matrix.platform }}
           path: dist/*
           if-no-files-found: error
           retention-days: 14
@@ -80,7 +80,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v6
         with:
-          pattern: binaries-*
+          pattern: serenade-*
           merge-multiple: true
           path: dist
       - name: Verify complete release and publish draft atomically

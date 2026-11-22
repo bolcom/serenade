@@ -49,7 +49,7 @@ branch. Once this workflow is on the default branch, GitHub enables manual
 dispatch. Pushes to release/** branches also run validation, allowing the workflow
 to be checked before merging it. Both paths build all four platforms without
 creating a GitHub release.
-Download binaries-* from the run's Artifacts section (requires GitHub sign-in).
+Download serenade-* from the run's Artifacts section (requires GitHub sign-in).
 Unzip the Actions artifact wrapper to obtain the platform archive and its SHA-256
 sidecar. Artifacts expire after 14 days.
 
