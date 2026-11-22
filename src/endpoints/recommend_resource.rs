@@ -40,7 +40,9 @@ pub async fn v1_recommend(
         let mut session_items = session_store.get_session_items(&evolving_session_id);
         if session_items.is_empty() {
             session_items.push(most_recent_item);
-        } else if session_items.last().unwrap() != &most_recent_item {
+        } else if data.knn.algorithm != vmisknn::algorithms::Algorithm::Vmis
+            || session_items.last().unwrap() != &most_recent_item
+        {
             session_items.push(most_recent_item);
             if session_items.len() > max_items_in_session {
                 // Reduce the amount of session_items to max_items_in_session.
@@ -53,7 +55,16 @@ pub async fn v1_recommend(
         vec![most_recent_item]
     };
 
-    let recommendations = vmisknn::predict(vmis_index, &session_items, k, m, how_many, enable_business_logic);
+    let recommendations = vmisknn::predict_with_model(
+        vmis_index,
+        &session_items,
+        k,
+        m,
+        how_many,
+        enable_business_logic,
+        &data.knn,
+        chrono::Utc::now().timestamp_millis() as f64 / 1000.0,
+    );
 
     let recommended_items: Vec<u64> = recommendations
         .into_sorted_vec()

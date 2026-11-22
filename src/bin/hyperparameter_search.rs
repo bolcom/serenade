@@ -1,8 +1,6 @@
 use serenade::hyperparameter::hyperparamgrid::HyperParamGrid;
 use serenade::metrics::mrr::Mrr;
 use serenade::metrics::SessionMetric;
-use serenade::vmisknn::vmis_index::VMISIndex;
-use serenade::{io, vmisknn};
 use std::collections::HashMap;
 
 use indicatif::ProgressBar;
@@ -17,10 +15,16 @@ fn main() {
         "neighborhood_size_k".to_string(),
         vec![50, 100, 500, 1000, 1500],
     );
-    param_grid.insert("max_items_in_session".to_string(), vec![1, 2, 3, 5, 7, 15, 100]);
+    param_grid.insert(
+        "max_items_in_session".to_string(),
+        vec![1, 2, 3, 5, 7, 15, 100],
+    );
     param_grid.insert("idf_weighting".to_string(), vec![1, 2, 3]);
 
-    let qty_max_reco_results = 21;
+    let model = std::env::args()
+        .nth(3)
+        .map(|path| serenade::config::AppConfig::new(path).model.knn)
+        .unwrap_or_default();
 
     let path_to_training = std::env::args()
         .nth(1)
@@ -38,8 +42,8 @@ fn main() {
     let mut best_params = HashMap::new();
     let main_metric_name = Mrr::new(20).get_name();
 
-    let chosen_hyperparameters = hyper_parametergrid.get_n_random_combinations(150);// Progress bar
-    // Progress bar - HPO
+    let chosen_hyperparameters = hyper_parametergrid.get_n_random_combinations(150); // Progress bar
+                                                                                     // Progress bar - HPO
     let pb_hpo = ProgressBar::new(chosen_hyperparameters.len() as u64);
     for hyperparams in chosen_hyperparameters {
         // increment progress bar
@@ -51,49 +55,23 @@ fn main() {
         let enable_business_logic = false;
 
         if neighborhood_size_k <= m_most_recent_sessions {
-            let vmis_index = VMISIndex::new_from_csv(&*path_to_training, m_most_recent_sessions, idf_weighting);
-            let ordered_test_sessions = io::read_test_data_evolving(&*test_data_file);
-            let mut mymetric = Mrr::new(20);
-            ordered_test_sessions
-                .iter()
-                .for_each(|(_session_id, evolving_session_items)| {
-                    for session_state in 1..evolving_session_items.len() {
-                        // use last x items of evolving session
-                        let start_index = if session_state > max_items_in_session {
-                            session_state - max_items_in_session
-                        } else {
-                            0
-                        };
-                        let session: &[u64] = &evolving_session_items[start_index..session_state];
-                        let recommendations = vmisknn::predict(
-                            &vmis_index,
-                            &session,
-                            neighborhood_size_k,
-                            m_most_recent_sessions,
-                            qty_max_reco_results,
-                            enable_business_logic,
-                        );
-
-                        let recommended_items = recommendations
-                            .into_sorted_vec()
-                            .iter()
-                            .map(|scored| scored.id)
-                            .collect::<Vec<u64>>();
-
-                        let actual_next_items = Vec::from(&evolving_session_items[session_state..]);
-                        mymetric.add(&recommended_items, &actual_next_items);
-                    }
-                });
-            if mymetric.result() > best_score {
-                best_score = mymetric.result();
+            let score = serenade::objective::objective_with_model(
+                path_to_training.clone(),
+                test_data_file.clone(),
+                m_most_recent_sessions as i32,
+                neighborhood_size_k as i32,
+                max_items_in_session as i32,
+                idf_weighting,
+                enable_business_logic,
+                &model,
+            );
+            if score > best_score {
+                best_score = score;
                 best_params = hyperparams.clone();
             }
             println!(
                 "HPO,{},{},{},{}",
-                m_most_recent_sessions,
-                neighborhood_size_k,
-                max_items_in_session,
-                mymetric.result()
+                m_most_recent_sessions, neighborhood_size_k, max_items_in_session, score
             );
         }
     }

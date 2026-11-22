@@ -2,15 +2,16 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 use hashbrown::hash_map::Entry;
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 
 use crate::vmisknn::similarity_indexed::SimilarityComputationNew;
 use crate::vmisknn::vmis_index::ProductAttributes;
 
-pub mod vsknn_index;
+pub mod algorithms;
 pub mod similarity_hashed;
 pub mod similarity_indexed;
 pub mod vmis_index;
+pub mod vsknn_index;
 
 #[derive(PartialEq, Debug)]
 pub struct SessionScore {
@@ -73,7 +74,6 @@ impl PartialOrd for ItemScore {
     }
 }
 
-
 #[derive(Eq, Debug)]
 pub struct SessionTime {
     pub session_id: u32,
@@ -106,7 +106,6 @@ impl PartialEq for SessionTime {
     }
 }
 
-
 fn linear_score(pos: usize) -> f64 {
     if pos < 100 {
         1.0 - (0.1 * pos as f64)
@@ -123,6 +122,9 @@ pub fn predict<I: SimilarityComputationNew + Send + Sync>(
     how_many: usize,
     enable_business_logic: bool,
 ) -> BinaryHeap<ItemScore> {
+    if evolving_session.is_empty() || k == 0 || m == 0 || how_many == 0 {
+        return BinaryHeap::new();
+    }
     let neighbors = index.find_neighbors(evolving_session, k, m);
 
     let mut item_scores: HashMap<u64, f64> = HashMap::with_capacity(1000);
@@ -141,7 +143,20 @@ pub fn predict<I: SimilarityComputationNew + Send + Sync>(
 
         let session_weight = linear_score(first_match_pos);
 
-        for item_id in training_item_ids.iter() {
+        // Historical sequences preserve repeated visits for positional algorithms.
+        // VMIS scores each distinct item only once per neighboring session.
+        // Short sessions avoid a per-neighbor allocation. Bound the quadratic
+        // scan; imported indexes can contain much longer sessions.
+        let mut seen =
+            (training_item_ids.len() > 32).then(|| HashSet::with_capacity(training_item_ids.len()));
+        for (position, item_id) in training_item_ids.iter().enumerate() {
+            let unique = match &mut seen {
+                Some(seen) => seen.insert(*item_id),
+                None => !training_item_ids[..position].contains(item_id),
+            };
+            if !unique {
+                continue;
+            }
             let item_idf = index.idf(item_id);
             if item_idf > 0.0 {
                 *item_scores.entry(*item_id).or_insert(0.0) +=
@@ -153,6 +168,53 @@ pub fn predict<I: SimilarityComputationNew + Send + Sync>(
         }
     }
 
+    rank_items(
+        index,
+        evolving_session,
+        item_scores,
+        how_many,
+        enable_business_logic,
+    )
+}
+
+/// Algorithm selection shares retrieval, filtering and serving output with legacy VMIS.
+pub fn predict_with_model(
+    index: &vmis_index::VMISIndex,
+    current: &[u64],
+    k: usize,
+    m: usize,
+    how_many: usize,
+    enable_business_logic: bool,
+    model: &algorithms::KnnConfig,
+    timestamp: f64,
+) -> BinaryHeap<ItemScore> {
+    if model.algorithm == algorithms::Algorithm::Vmis {
+        return predict(index, current, k, m, how_many, enable_business_logic);
+    }
+    if current.is_empty() || k == 0 || m == 0 || how_many == 0 {
+        return BinaryHeap::new();
+    }
+    let candidates = index.candidate_sessions(current, m);
+    let neighbors = algorithms::score_neighbors(index, current, &candidates, timestamp, k, model);
+    let mut scores = algorithms::score_items(index, current, &neighbors, model);
+    if model.normalize {
+        let max = scores.values().copied().fold(0.0_f64, f64::max);
+        if max > 0.0 {
+            for score in scores.values_mut() {
+                *score /= max;
+            }
+        }
+    }
+    rank_items(index, current, scores, how_many, enable_business_logic)
+}
+
+fn rank_items<I: SimilarityComputationNew>(
+    index: &I,
+    evolving_session: &[u64],
+    mut item_scores: HashMap<u64, f64>,
+    how_many: usize,
+    enable_business_logic: bool,
+) -> BinaryHeap<ItemScore> {
     // Remove most recent item if it has been scored as well
     let most_recent_item = *evolving_session.last().unwrap();
     if let Entry::Occupied(entry) = item_scores.entry(most_recent_item) {
@@ -189,7 +251,8 @@ pub fn predict<I: SimilarityComputationNew + Send + Sync>(
 
         if top_items.len() < how_many {
             if enable_business_logic {
-                let reco_item_attribs:Option<&ProductAttributes> = index.find_attributes(&reco_item_id);
+                let reco_item_attribs: Option<&ProductAttributes> =
+                    index.find_attributes(&reco_item_id);
                 if passes_business_rules(current_item_attribs, reco_item_attribs) {
                     top_items.push(scored_item);
                 }
@@ -270,20 +333,19 @@ mod vmisknn_test {
             qty_events_p100: 5,
         };
 
-        let (
-            item_to_top_sessions_ordered,
-            item_to_idf_score,
-            _session_to_items_sorted,
-            item_to_product_attributes,
-        ) = prepare_hashmap(
-            &historical_sessions_train,
-            &historical_sessions_max_time_stamp,
-            n_most_recent_sessions,
-            training_data_stats.qty_events_p99_5 as usize,
-            idf_weighting
-        );
+        let (item_to_top_sessions_ordered, item_to_idf_score, item_to_product_attributes) =
+            prepare_hashmap(
+                &historical_sessions_train,
+                &historical_sessions_max_time_stamp,
+                n_most_recent_sessions,
+                training_data_stats.qty_events_p99_5 as usize,
+                idf_weighting,
+            );
 
         let vmis_index = VMISIndex {
+            chronological_events: true,
+            candidate_capacity: Some(n_most_recent_sessions),
+            reference_idf: false,
             item_to_top_sessions_ordered: item_to_top_sessions_ordered,
             session_to_max_time_stamp: historical_sessions_max_time_stamp,
             item_to_idf_score: item_to_idf_score,
@@ -294,7 +356,14 @@ mod vmisknn_test {
 
         let session_items = vec![920005];
 
-        let recommendations = predict(&vmis_index, &session_items, k, m, how_many, enable_business_logic);
+        let recommendations = predict(
+            &vmis_index,
+            &session_items,
+            k,
+            m,
+            how_many,
+            enable_business_logic,
+        );
 
         // we expect the four other item_ids to be recommended
         assert_eq!(4, recommendations.len());
@@ -307,6 +376,35 @@ mod vmisknn_test {
 
         // item_id: 920004 should have the highest score and thus be the first result.
         assert_eq!(920004, recommended_items[0]);
+    }
+
+    #[test]
+    fn repeated_historical_visits_do_not_change_vmis_scores() {
+        struct SequenceIndex(Vec<u64>);
+        impl SimilarityComputationNew for SequenceIndex {
+            fn items_for_session(&self, _: &u32) -> &[u64] {
+                &self.0
+            }
+            fn idf(&self, _: &u64) -> f64 {
+                2.0
+            }
+            fn find_neighbors(&self, _: &[u64], _: usize, _: usize) -> BinaryHeap<SessionScore> {
+                vec![SessionScore::new(0, 0.75)].into_iter().collect()
+            }
+            fn find_attributes(&self, _: &u64) -> Option<&ProductAttributes> {
+                None
+            }
+        }
+        let scores = |items| {
+            let mut scores = predict(&SequenceIndex(items), &[8, 1], 10, 10, 10, false).into_vec();
+            scores.sort_by_key(|score| score.id);
+            scores
+        };
+        let expected = scores(vec![1, 2, 3]);
+        let repeated = scores(vec![2, 1, 2, 3, 1, 3]);
+        assert_eq!(expected, repeated);
+        assert_eq!(repeated.len(), 2);
+        assert!((repeated[0].score - 1.35).abs() < 1e-12);
     }
 
     #[test]
@@ -354,7 +452,6 @@ mod vmisknn_test {
         let expected_items: Vec<u64> = vec![123, 234, 543];
         assert_eq!(expected_items, recommended_items);
     }
-
 
     #[test]
     fn handle_reverse_ordering_sessionscore() {
@@ -409,7 +506,4 @@ mod vmisknn_test {
         assert_eq!(234, heap_timestamps.pop().unwrap().session_id);
         assert_eq!(123, heap_timestamps.pop().unwrap().session_id);
     }
-
-
-
 }

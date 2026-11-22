@@ -8,7 +8,6 @@ use actix_web::{
 use actix_web_prom::PrometheusMetrics;
 
 use actix_web::http::header;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -33,23 +32,16 @@ async fn main() -> std::io::Result<()> {
     let enable_business_logic = config.logic.enable_business_logic;
     let example_item_id = config.logic.example_item_id;
 
-    let training_data_path = Path::new(&config.data.training_data_path);
-    let vmis_index = if training_data_path.is_dir() {
-        // By default we use an index that is computed offline on billions of user-item interactions.
-        Arc::new(VMISIndex::new(&config.data.training_data_path))
-    } else if training_data_path.is_file() {
-        // The following line creates an index directly from a csv file as input.
-        Arc::new(VMISIndex::new_from_csv(
+    let vmis_index = Arc::new(
+        VMISIndex::load_for_model(
             &config.data.training_data_path,
             config.model.m_most_recent_sessions,
             config.model.idf_weighting as f64,
-        ))
-    } else {
-        panic!(
-            "Training data file does not exist: {}",
-            &config.data.training_data_path
+            &config.model.knn,
         )
-    };
+        .expect("Cannot load selected kNN model"),
+    );
+    let knn = config.model.knn.clone();
 
     println!("start db");
     let session_ttl = Duration::from_secs(30 * 60);
@@ -61,6 +53,7 @@ async fn main() -> std::io::Result<()> {
     println!("Done. start httpd at http://{}", &bind_address);
     HttpServer::new(move || {
         let handles_and_config = SharedHandlesAndConfig {
+            knn: knn.clone(),
             session_store: db.clone(),
             vmis_index: vmis_index.clone(),
             m_most_recent_sessions,

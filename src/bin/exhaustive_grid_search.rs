@@ -6,11 +6,9 @@ use indicatif::ProgressBar;
 extern crate csv;
 use csv::Writer;
 
-fn main() -> anyhow::Result<()>{
+fn main() -> anyhow::Result<()> {
     // get params from config file
-    let config_path = std::env::args().
-        nth(1).
-        expect("Config file not specified!");
+    let config_path = std::env::args().nth(1).expect("Config file not specified!");
     let config = AppConfig::new(config_path);
     let train_data_path = config.hyperparam.training_data_path;
     let test_data_path = config.hyperparam.test_data_path;
@@ -25,7 +23,10 @@ fn main() -> anyhow::Result<()>{
     let idf_weighting_choices = [1, 2, 3, 5, 7, 10];
 
     // Progress bar
-    let total_num_iterations = n_most_recent_sessions_choices.len() * neighborhood_size_k_choices.len() * last_items_in_session_choices.len() * idf_weighting_choices.len();
+    let total_num_iterations = n_most_recent_sessions_choices.len()
+        * neighborhood_size_k_choices.len()
+        * last_items_in_session_choices.len()
+        * idf_weighting_choices.len();
     let pb = ProgressBar::new(total_num_iterations as u64);
 
     let mut wtr = Writer::from_path(out_path)?;
@@ -37,7 +38,7 @@ fn main() -> anyhow::Result<()>{
             "neighborhood_size_k",
             "last_items_in_session",
             "idf_weighting",
-            "MRR@20"
+            "MRR@20",
         ])?;
     }
 
@@ -59,14 +60,15 @@ fn main() -> anyhow::Result<()>{
                     pb.inc(1);
                     // get the result of the object function
                     // with current combination of hyperparameters
-                    let v = objective::objective(
+                    let v = objective::objective_with_model(
                         train_data_path.clone(),
                         test_data_path.clone(),
                         n_most_recent_sessions,
                         neighborhood_size_k,
                         last_items_in_session,
                         idf_weighting as f64,
-                        enable_business_logic
+                        enable_business_logic,
+                        &config.model.knn,
                     );
 
                     if save_records {
@@ -77,7 +79,7 @@ fn main() -> anyhow::Result<()>{
                             neighborhood_size_k.to_string(),
                             last_items_in_session.to_string(),
                             (idf_weighting as i32).to_string(),
-                            v.to_string()
+                            v.to_string(),
                         ])?;
                     }
                     // update current best values
@@ -89,20 +91,18 @@ fn main() -> anyhow::Result<()>{
                         best_idf_weighting = idf_weighting;
                     }
                     iteration = iteration + 1;
-
                 }
             }
         }
     }
     // print best value for each hyperparameter
-    println!("Best n_most_recent_sessions: {}",
-        best_n_most_recent_sessions);
-    println!("Best neighborhood_size_k: {}",
-        best_neighborhood_size_k);
-    println!("Best last_items_in_session: {}",
-        best_last_items_in_session);
-    println!("Best idf_weighting: {}",
-             best_idf_weighting);
+    println!(
+        "Best n_most_recent_sessions: {}",
+        best_n_most_recent_sessions
+    );
+    println!("Best neighborhood_size_k: {}", best_neighborhood_size_k);
+    println!("Best last_items_in_session: {}", best_last_items_in_session);
+    println!("Best idf_weighting: {}", best_idf_weighting);
     if enable_business_logic {
         println!("Business logic were enabled.");
     } else {

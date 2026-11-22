@@ -9,6 +9,7 @@ use crate::sessions::RocksDBSessionStore;
 use crate::vmisknn::vmis_index::VMISIndex;
 
 pub struct SharedHandlesAndConfig {
+    pub knn: crate::vmisknn::algorithms::KnnConfig,
     pub session_store: Arc<RocksDBSessionStore>,
     pub vmis_index: Arc<VMISIndex>,
     pub m_most_recent_sessions: usize,
@@ -21,6 +22,7 @@ pub struct SharedHandlesAndConfig {
     pub example_item_id: usize,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct TrainingDataStats {
     pub descriptive_name: String,
     pub qty_records: usize,

@@ -1,5 +1,4 @@
 use hashbrown::HashMap;
-use itertools::Itertools;
 use rayon::iter::ParallelBridge;
 use rayon::prelude::ParallelIterator;
 use std::fs::File;
@@ -37,23 +36,49 @@ where
     Ok(io::BufReader::new(file).lines())
 }
 
+/// Chronological events with stable input order for equal timestamps.
+/// Keep fractional timestamps until prediction, so session-age weighting is reproducible.
+pub fn read_test_data_timed(
+    test_data_file: &str,
+) -> HashMap<TrainingSessionId, Vec<(ItemId, f64)>> {
+    let mut sessions = HashMap::<TrainingSessionId, Vec<(ItemId, f64)>>::new();
+    for line in create_buffered_line_reader(test_data_file)
+        .expect("Cannot read test data")
+        .skip(1)
+    {
+        let line = line.expect("Cannot read test event");
+        let mut fields = line.split_whitespace();
+        let session = fields.next().unwrap().parse().unwrap();
+        let item = fields.next().unwrap().parse().unwrap();
+        let time: f64 = fields.next().unwrap().parse().unwrap();
+        assert!(time.is_finite(), "Event timestamp must be finite");
+        sessions.entry(session).or_default().push((item, time));
+    }
+    for events in sessions.values_mut() {
+        events.sort_by(|a, b| a.1.total_cmp(&b.1));
+    }
+    sessions
+}
+
 pub fn read_test_data_evolving(test_data_file: &str) -> HashMap<TrainingSessionId, Vec<ItemId>> {
-    let training_data = read_training_data(test_data_file);
-    let evolving_sessions: HashMap<TrainingSessionId, Vec<ItemId>> = training_data
+    read_test_data_timed(test_data_file)
         .into_iter()
-        .map(|(session_id, item_id, time)| (session_id, (item_id, time)))
-        .into_group_map()
-        .into_iter()
-        .map(|(session_id, mut item_ids_with_order)| {
-            item_ids_with_order.sort_unstable_by(|(_, time_a), (_, time_b)| time_a.cmp(time_b));
-            let session_items: Vec<ItemId> = item_ids_with_order
-                .into_iter()
-                .map(|(item, _order)| item)
-                .collect();
+        .map(|(id, events)| (id, events.into_iter().map(|(item, _)| item).collect()))
+        .collect()
+}
 
-            (session_id, session_items)
-        })
-        .collect();
-
-    evolving_sessions
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn evaluation_order_preserves_fractional_times_ties_and_repeats() {
+        let path = std::env::temp_dir().join(format!("serenade-timed-{}.tsv", std::process::id()));
+        std::fs::write(
+            &path,
+            "SessionId\tItemId\tTime\n1\t4\t2.8\n1\t2\t2.1\n1\t2\t2.1\n1\t3\t1\n",
+        )
+        .unwrap();
+        let sessions = super::read_test_data_timed(path.to_str().unwrap());
+        assert_eq!(sessions[&1], vec![(3, 1.0), (2, 2.1), (2, 2.1), (4, 2.8)]);
+        std::fs::remove_file(path).unwrap();
+    }
 }

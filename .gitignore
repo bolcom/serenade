@@ -27,3 +27,10 @@ dataset*
 *.csv
 assets/example/
 Serenade-*.tar.gz
+
+# Local copies of the pinned upstream Python scoring references.
+/tests/reference/*.py
+/.baseline/
+
+!/tests/reference/generate.py
+!/docs/example-knn-results.csv

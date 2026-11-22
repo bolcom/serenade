@@ -1,0 +1,24 @@
+//! Persist the shared index without changing the recommendation server.
+use serenade::{config::AppConfig, vmisknn::vmis_index::VMISIndex};
+fn main() {
+    let config_path = std::env::args()
+        .nth(1)
+        .expect("usage: build_index CONFIG OUTPUT.vmis");
+    let output = std::env::args()
+        .nth(2)
+        .expect("usage: build_index CONFIG OUTPUT.vmis");
+    let config = AppConfig::new(config_path);
+    let index = VMISIndex::load_for_model(
+        &config.data.training_data_path,
+        config.model.m_most_recent_sessions,
+        config.model.idf_weighting as f64,
+        &config.model.knn,
+    )
+    .expect("Cannot construct selected kNN model");
+    index.save(&output).expect("Cannot write VMIS snapshot");
+    println!(
+        "Saved {} (estimated owned index allocation: {} bytes)",
+        output,
+        index.estimated_heap_bytes()
+    );
+}

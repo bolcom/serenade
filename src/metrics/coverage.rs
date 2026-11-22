@@ -15,9 +15,11 @@ impl Coverage {}
 
 impl Coverage {
     pub fn new(training_df: &[(TrainingSessionId, ItemId, Time)], length: usize) -> Coverage {
-        let mut distinct_item_ids = training_df.iter().map(|record| record.1).collect_vec();
-        distinct_item_ids.sort_unstable();
-        distinct_item_ids.dedup();
+        Self::from_items(training_df.iter().map(|row| row.1), length)
+    }
+
+    pub fn from_items(items: impl Iterator<Item = u64>, length: usize) -> Self {
+        let distinct_item_ids: HashSet<_> = items.collect();
         Coverage {
             unique_training_items: distinct_item_ids.len(),
             test_items: HashSet::new(),
