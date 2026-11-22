@@ -1,9 +1,7 @@
 use sessions::RocksDBSessionStore;
 
-use actix_web::{
-    http::ContentEncoding, middleware, web, App, HttpRequest, HttpResponse, HttpServer,
-};
-use actix_web_prom::PrometheusMetrics;
+use actix_web::{middleware, web, App, HttpRequest, HttpResponse, HttpServer};
+use actix_web_prom::PrometheusMetricsBuilder;
 
 use actix_web::http::header;
 use std::sync::Arc;
@@ -90,7 +88,10 @@ async fn main() -> std::io::Result<()> {
     };
 
     println!("start metrics");
-    let prometheus = PrometheusMetrics::new("api", Some("/internal/prometheus"), None);
+    let prometheus = PrometheusMetricsBuilder::new("api")
+        .endpoint("/internal/prometheus")
+        .build()
+        .map_err(std::io::Error::other)?;
 
     println!("Done. start httpd at http://{}", &bind_address);
     HttpServer::new(move || {
@@ -108,25 +109,26 @@ async fn main() -> std::io::Result<()> {
             example_item_id,
         };
 
-        let mut app = App::new().data(handles_and_config);
+        let mut app = App::new().app_data(web::Data::new(handles_and_config));
         if let Some(executor) = &executor {
             app = app.app_data(executor.clone());
         }
-        app.wrap(middleware::Compress::new(ContentEncoding::Identity))
-            .wrap(prometheus.clone())
+        app.wrap(prometheus.clone())
             .wrap(
                 middleware::DefaultHeaders::new()
-                    .header("Cache-Control", "no-cache, no-store, must-revalidate")
-                    .header("Pragma", "no-cache")
-                    .header("Expires", "0"),
+                    .add(("Cache-Control", "no-cache, no-store, must-revalidate"))
+                    .add(("Pragma", "no-cache"))
+                    .add(("Expires", "0")),
             )
             .service(v1_recommend)
             .service(internal)
-            .service(web::resource("/").route(web::get().to(|_req: HttpRequest| {
-                HttpResponse::Found()
-                    .header(header::LOCATION, "/internal")
-                    .finish()
-            })))
+            .service(
+                web::resource("/").route(web::get().to(|_req: HttpRequest| async {
+                    HttpResponse::Found()
+                        .insert_header((header::LOCATION, "/internal"))
+                        .finish()
+                })),
+            )
     })
     .workers(config.server.num_workers)
     .bind(&bind_address)

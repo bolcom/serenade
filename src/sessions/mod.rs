@@ -1,5 +1,5 @@
 use crate::io::ItemId;
-use bincode;
+use crate::serialization as bincode;
 use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime};

@@ -56,11 +56,20 @@ pub struct LogicConfig {
     pub example_item_id: usize,
 }
 
+pub struct AlgorithmSearchConfig {
+    pub enabled: bool,
+    pub ranges: std::collections::BTreeMap<String, String>,
+}
+
 pub struct HyperparamConfig {
+    pub output_dir: String,
+    pub algorithms: std::collections::BTreeMap<String, AlgorithmSearchConfig>,
+    // Legacy application/HPO files keep their single-model CLI default.
+    pub multi_algorithm: bool,
     pub training_data_path: String,
     pub test_data_path: String,
     pub validation_data_path: String,
-    pub num_iterations: usize,
+    pub num_trials: usize,
     pub seed: u64,
     pub search_ranges: std::collections::BTreeMap<String, String>,
     pub save_records: bool,
@@ -74,6 +83,11 @@ pub struct HyperparamConfig {
 
 impl AppConfig {
     pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.data.training_data_path.trim().is_empty()
+                || !self.hyperparam.training_data_path.trim().is_empty(),
+            "data.training_data_path or hyperparam.training_data_path is required"
+        );
         anyhow::ensure!(
             !self.server.host.trim().is_empty(),
             "server.host must not be empty"
@@ -191,8 +205,7 @@ impl DataConfig {
             training_data_path: conf
                 .get(path.push("training_data_path"))
                 .unquote()
-                .value()
-                .map_err(|e| anyhow::anyhow!("{}", e))?,
+                .value_or_default("training_data_path", String::new())?,
         })
     }
 }
@@ -231,8 +244,7 @@ impl LogicConfig {
             enable_business_logic: conf
                 .get(path.push("enable_business_logic"))
                 .trim()
-                .value()
-                .map_err(|e| anyhow::anyhow!("{}", e))?,
+                .value_or_default("enable_business_logic", true)?,
             example_item_id: conf
                 .get(path.push("example_item_id"))
                 .trim()
@@ -243,6 +255,10 @@ impl LogicConfig {
 
 impl HyperparamConfig {
     fn parse(conf: &Config, path: ConfPath) -> anyhow::Result<HyperparamConfig> {
+        anyhow::ensure!(
+            knn_value(conf, &path, "num_iterations")?.is_none(),
+            "hyperparam.num_iterations is no longer supported; use hyperparam.num_trials"
+        );
         let mut search_ranges = std::collections::BTreeMap::new();
         for key in [
             "lambda_spw",
@@ -256,7 +272,46 @@ impl HyperparamConfig {
                 search_ranges.insert(key.to_owned(), value);
             }
         }
+        let mut algorithms = std::collections::BTreeMap::new();
+        let mut multi_algorithm = knn_value(conf, &path, "output_dir")?.is_some();
+        for algorithm in crate::vmisknn::algorithms::Algorithm::ALL {
+            let algorithm_path = path.push("algorithms").push(algorithm.name());
+            let enabled = knn_value(conf, &algorithm_path, "enabled")?;
+            multi_algorithm |= enabled.is_some();
+            let enabled = enabled
+                .map(|v| v.parse::<bool>())
+                .transpose()?
+                .unwrap_or(true);
+            let mut ranges = std::collections::BTreeMap::new();
+            for name in [
+                "m_most_recent_sessions",
+                "neighborhood_size_k",
+                "max_items_in_session",
+                "idf_weighting",
+                "pop_boost",
+                "lambda_spw",
+                "lambda_snh",
+                "lambda_inh",
+                "lambda_ipw",
+                "lambda_idf",
+            ] {
+                if let Some(value) = knn_value(conf, &algorithm_path, &format!("{}_range", name))? {
+                    multi_algorithm = true;
+                    ranges.insert(name.to_owned(), value);
+                }
+            }
+            algorithms.insert(
+                algorithm.name().to_owned(),
+                AlgorithmSearchConfig { enabled, ranges },
+            );
+        }
         Ok(HyperparamConfig {
+            output_dir: conf
+                .get(path.push("output_dir"))
+                .unquote()
+                .value_or_default("output_dir", "hpo-results".to_owned())?,
+            algorithms,
+            multi_algorithm,
             seed: conf
                 .get(path.push("seed"))
                 .trim()
@@ -274,10 +329,10 @@ impl HyperparamConfig {
                 .get(path.push("validation_data_path"))
                 .unquote()
                 .value_or_default("validation_data_path", String::new())?,
-            num_iterations: conf
-                .get(path.push("num_iterations"))
+            num_trials: conf
+                .get(path.push("num_trials"))
                 .trim()
-                .value_or_default("num_iterations", 15)?,
+                .value_or_default("num_trials", 15)?,
             save_records: conf
                 .get(path.push("save_records"))
                 .trim()
@@ -467,6 +522,30 @@ mod tests {
             assert!(error.to_string().contains(key));
         }
         assert_eq!(server_value("host", "localhost").unwrap().port, 8080);
+    }
+
+    #[test]
+    fn trial_budget_uses_num_trials_and_rejects_old_name() {
+        fn parse(text: &str) -> anyhow::Result<HyperparamConfig> {
+            let mut config = Config::default();
+            config.add_source(
+                ConfigText::new(std::io::Cursor::new(text.as_bytes()), "test").unwrap(),
+            );
+            HyperparamConfig::parse(&config, ConfPath::from(&["hyperparam"]))
+        }
+        assert_eq!(
+            parse("[hyperparam]\nnum_trials = 7\n").unwrap().num_trials,
+            7
+        );
+        assert_eq!(parse("[hyperparam]\n").unwrap().num_trials, 15);
+        for text in [
+            "[hyperparam]\nnum_iterations = 7\n",
+            "[hyperparam]\nnum_trials = 7\nnum_iterations = 8\n",
+        ] {
+            let error = parse(text).err().unwrap();
+            assert!(error.to_string().contains("use hyperparam.num_trials"));
+        }
+        assert!(parse("[hyperparam]\nnum_trials = invalid\n").is_err());
     }
 
     #[test]

@@ -1,3 +1,4 @@
+use crate::serialization as bincode;
 use chrono::NaiveDateTime;
 use hashbrown::{HashMap, HashSet};
 use std::sync::Arc;
@@ -94,7 +95,10 @@ impl Percentiles {
                 (self.pending[lo] + (self.pending[hi] - self.pending[lo]) * pos.fract()).round()
                     as u64
             } else {
-                self.digest.estimate_quantile(*q).round() as u64
+                self.digest
+                    .estimate_quantile(*q)
+                    .expect("nonempty digest has quantiles")
+                    .round() as u64
             };
         }
         result[8] = self.max;

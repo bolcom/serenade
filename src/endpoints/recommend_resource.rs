@@ -42,7 +42,9 @@ fn recommend(data: &SharedHandlesAndConfig, query: V1QueryParams) -> Vec<u64> {
     let most_recent_item = query.item_id;
     let user_consent = query.user_consent;
     let session_id_digest = md5::compute(&query.session_id);
-    let evolving_session_id = Builder::from_bytes(session_id_digest.0).build().as_u128();
+    let evolving_session_id = Builder::from_bytes(session_id_digest.0)
+        .into_uuid()
+        .as_u128();
 
     let vmis_index = data.vmis_index.as_ref();
     let session_store = data.session_store.as_ref();

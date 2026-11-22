@@ -12,8 +12,9 @@ use std::fs::File;
 use std::path::Path;
 use std::time::Instant;
 
-use avro_rs::from_value;
-use avro_rs::Reader;
+use crate::serialization as bincode;
+use apache_avro::from_value;
+use apache_avro::Reader;
 use itertools::Itertools;
 
 #[derive(Serialize, Deserialize)]
@@ -1072,7 +1073,7 @@ mod statistics_integration_tests {
     }
     #[test]
     fn avro_requires_raw_metadata_and_preserves_it_exactly() {
-        use avro_rs::{to_value, Schema, Writer};
+        use apache_avro::{to_value, Schema, Writer};
         #[allow(non_snake_case)]
         #[derive(Serialize)]
         struct Session {
@@ -1098,9 +1099,10 @@ mod statistics_integration_tests {
         let mut writer = Writer::new(
             &schema,
             File::create(base.join("sessionindex/part.avro")).unwrap(),
-        );
+        )
+        .unwrap();
         writer
-            .append(
+            .append_value(
                 to_value(Session {
                     SessionIndex: 0,
                     item_ids_asc: vec![7],
@@ -1115,9 +1117,10 @@ mod statistics_integration_tests {
         let mut writer = Writer::new(
             &schema,
             File::create(base.join("itemindex/part.avro")).unwrap(),
-        );
+        )
+        .unwrap();
         writer
-            .append(
+            .append_value(
                 to_value(Item {
                     ItemId: 7,
                     session_indices_time_ordered: vec![0],

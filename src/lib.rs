@@ -5,6 +5,7 @@ pub mod endpoints;
 pub mod io;
 pub mod metrics;
 pub mod objective;
+mod serialization;
 pub mod sessions;
 pub mod stopwatch;
 pub mod vmisknn;

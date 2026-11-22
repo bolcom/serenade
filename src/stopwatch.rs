@@ -47,7 +47,7 @@ impl Stopwatch {
             .map(|tuple| tuple.1)
             .collect();
         let sorted_digest = t_digest.merge_unsorted(durations);
-        sorted_digest.estimate_quantile(q / 100.0)
+        sorted_digest.estimate_quantile(q / 100.0).unwrap_or(0.0)
     }
 }
 
@@ -57,6 +57,7 @@ mod tests {
     #[test]
     fn percentiles_use_percentage_units_from_evaluator() {
         let mut watch = Stopwatch::new();
+        assert_eq!(watch.get_percentile_in_micros(50.0), 0.0);
         watch.prediction_durations = (0..101).map(|n| (0, n as f64)).collect();
         assert!((watch.get_percentile_in_micros(50.0) - 50.0).abs() < 2.0);
         assert!((watch.get_percentile_in_micros(90.0) - 90.0).abs() < 2.0);

@@ -1,10 +1,12 @@
-# Example dataset evaluation
+# Historical example dataset evaluation
+
+This report predates deterministic tie-breaking and the shared offline workflow. For current tested commands and reproducible measurements, see [offline evaluation](EVALUATION.md).
 
 November 22, 2026; feature/start, release mode, Windows, Intel Core i9-10900KF, rustc 1.100.0.
 
 Training: D:/git/serenade/assets/example/train.txt. Shared settings from example.toml: m=500, k=50, last 2 current events, legacy IDF weight=1, business filtering on. Evaluate at 20 recommendations (bundled serving config requests 21). Each algorithm uses its reference scoring defaults; VMIS uses legacy scoring. No hyperparameter tuning. CSV assigns non-adult/for-sale attributes, so business filtering introduces no catalog restrictions here. Session age uses the latest observed event timestamp.
 
-Metrics follow Serenade: all remaining session items are targets, repository NDCG definition unchanged. Equal-score ordering is unspecified; small differences between runs are possible.
+Metrics follow Serenade: all remaining session items are targets, repository NDCG definition unchanged. Equal-score ordering was unspecified in this historical run; the current implementation uses deterministic ties.
 
 ## valid
 

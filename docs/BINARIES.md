@@ -1,7 +1,7 @@
 # Serenade binary packages
 
 Packages contain serving, evaluator, and tpe_hyperparameter_optm (with .exe on
-Windows), this guide, LICENSE.md, assets/example/workflows.toml and the bundled
+Windows), this guide, LICENSE.md, configs/hpo.toml, assets/example/workflows.toml and the bundled
 train.txt, valid.txt and test.txt example data. No Rust installation is needed.
 The example corpus is the existing repository example.zip, distributed with Serenade.
 
@@ -16,22 +16,30 @@ Extract the archive and open a terminal in its single top-level directory.
 On Linux/macOS run:
 
 ```sh
-./evaluator assets/example/workflows.toml vmis evaluation.json
-./tpe_hyperparameter_optm assets/example/workflows.toml vmis hpo
-./serving hpo/vmis-serving.toml
+./tpe_hyperparameter_optm configs/hpo.toml
+./evaluator hpo-results/stan.toml
+./serving hpo-results/stan.toml
 ```
 
 On Windows PowerShell run:
 
 ```powershell
-.\evaluator.exe assets/example/workflows.toml vmis evaluation.json
-.\tpe_hyperparameter_optm.exe assets/example/workflows.toml vmis hpo
-.\serving.exe hpo/vmis-serving.toml
+.\tpe_hyperparameter_optm.exe configs/hpo.toml
+.\evaluator.exe hpo-results/stan.toml
+.\serving.exe hpo-results/stan.toml
 ```
 
-The example performs three seeded trials.
+The default HPO file enables all five algorithms and performs 50 seeded trials per algorithm.
+Edit `configs/hpo.toml` to change datasets, budget, seed or ranges. Set
+`enabled = false` in any `[hyperparam.algorithms.NAME]` section to skip it.
+See the range examples in `configs/hpo.toml` and the repository guide
+`docs/HYPERPARAMETER_SEARCH.md` for range details.
+Append `stan` to the TPE command to optimize only that enabled algorithm.
+Run `./evaluator hpo-results` (Windows: `.\evaluator.exe hpo-results`) to evaluate
+all exported models on test data with their own selected settings.
 Keep the working directory at the package root: all dataset paths are relative
-to it. TPE writes its selected model to hpo/vmis-serving.toml. Serving creates
+to it. TPE writes one complete `hpo-results/NAME.toml` per enabled algorithm, plus JSON reports.
+The same TOML works unchanged for evaluation and serving. Serving creates
 sessions.db and listens on port 8081. Request recommendations with:
 
 ```sh

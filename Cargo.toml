@@ -9,6 +9,7 @@ license = "Apache-2.0"
 version = "0.3.1"
 authors = ["submission@sigmod2021.org"]
 edition = "2021"
+rust-version = "1.89"
 
 
 [[bin]]
@@ -17,25 +18,26 @@ path = "src/bin/serving.rs"
 
 
 [dependencies]
-csv = "1.1"
-serde_json = "1.0"
-rand = "0.8"
-itertools = "0.10"
-actix-web = "3.3"
-futures = "0.3"
-rocksdb = {version = "0.21", default-features = false}
-bincode = "1.3"
-chrono = { version = "0.4", features = ["serde"] }
-serde = { version = "1.0", features = ["derive"] }
-actix-web-prom = "0.5"
-sys-info = "0.9"
-hashbrown = {version = "0.11", features = ["serde"]}
-tdigest = "0.2"
-uuid = "0.8"
-md5 = "0.7"
-rayon = "1.5.0"
-dary_heap = "0.2.2"
-avro-rs = {version = "0.13", features = ["snappy"]}
-justconfig = "1.0"
-tpe = "0.2.0"
-anyhow = "1.0.53"
+csv = "1.4.0"
+serde_json = "1.0.154"
+rand = "0.10.4"
+itertools = "0.15.0"
+actix-web = "4.20.0"
+futures = "0.3.34"
+rocksdb = {version = "0.25.0", default-features = false, features = ["bindgen-runtime"]}
+# 3.0.0 intentionally fails compilation; 2.0.1 is the last functional release.
+bincode = { version = "2.0.1", default-features = false, features = ["std", "serde"] }
+chrono = { version = "0.4.45", features = ["serde"] }
+serde = { version = "1.0.229", features = ["derive"] }
+actix-web-prom = "0.10.0"
+sys-info = "0.9.1"
+hashbrown = {version = "0.17.2", features = ["serde"]}
+tdigest = "1.0.1"
+uuid = "1.29.3"
+md5 = "0.8.1"
+rayon = "1.12.0"
+dary_heap = "0.3.9"
+apache-avro = {version = "0.23.0", features = ["snappy"]}
+justconfig = "1.0.1"
+tpe = "0.3.1"
+anyhow = "1.0.104"

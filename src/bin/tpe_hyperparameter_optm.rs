@@ -109,7 +109,12 @@ fn axes(config: &AppConfig, algorithm: Algorithm) -> anyhow::Result<Search> {
     let mut axes = Vec::new();
     let mut ranges = BTreeMap::new();
     let mut max_m = 0;
-    for (name, integer, positive, text) in specs {
+    for (name, integer, positive, default) in specs {
+        let text = h.algorithms[algorithm.name()]
+            .ranges
+            .get(name)
+            .map(String::as_str)
+            .unwrap_or(default);
         let (low, high) = range(text, integer, positive)?;
         if name == "m_most_recent_sessions" {
             max_m = high as usize;
@@ -174,16 +179,40 @@ fn main() -> anyhow::Result<()> {
     );
     let config = AppConfig::try_new(args[1].clone())?;
     anyhow::ensure!(
-        config.hyperparam.num_iterations > 0,
-        "hyperparam.num_iterations must be positive"
+        config.hyperparam.num_trials > 0,
+        "hyperparam.num_trials must be positive"
     );
-    let models = offline::selected_models(&config.model, args.get(2).map(String::as_str))?;
+    let selection = args
+        .get(2)
+        .map(String::as_str)
+        .or(if config.hyperparam.multi_algorithm {
+            Some("all")
+        } else {
+            None
+        });
+    let mut models = offline::selected_models(&config.model, selection)?;
+    if selection != Some("all") {
+        anyhow::ensure!(
+            config.hyperparam.algorithms[models[0].knn.algorithm.name()].enabled,
+            "selected algorithm is disabled"
+        );
+    }
+    models.retain(|m| config.hyperparam.algorithms[m.knn.algorithm.name()].enabled);
+    anyhow::ensure!(!models.is_empty(), "no enabled algorithms");
     let searches = models
         .iter()
         .map(|m| axes(&config, m.knn.algorithm))
         .collect::<anyhow::Result<Vec<_>>>()?;
     let max_m = searches.iter().map(|s| s.max_m).max().unwrap();
-    let training = &config.hyperparam.training_data_path;
+    let training = if config.hyperparam.training_data_path.is_empty() {
+        &config.data.training_data_path
+    } else {
+        &config.hyperparam.training_data_path
+    };
+    anyhow::ensure!(
+        !training.is_empty(),
+        "hyperparam.training_data_path is required"
+    );
     let data = EvaluationData::load(&config.hyperparam.validation_data_path)?;
     let mut index = VMISIndex::load_for_model(
         training,
@@ -192,9 +221,12 @@ fn main() -> anyhow::Result<()> {
         &config.model.knn,
     )
     .map_err(anyhow::Error::msg)?;
-    let output = args.get(3).map(String::as_str).unwrap_or("hpo-results");
+    let output = args
+        .get(3)
+        .map(String::as_str)
+        .unwrap_or(&config.hyperparam.output_dir);
     std::fs::create_dir_all(output)?;
-    println!("algorithm\tbest validation MRR@20\thyperparameters\tserving configuration");
+    println!("algorithm\tbest validation MRR@20\thyperparameters\tapplication configuration");
     let mut comparison = Vec::new();
     for (base, search) in models.into_iter().zip(searches) {
         let Search {
@@ -211,7 +243,7 @@ fn main() -> anyhow::Result<()> {
         let trials_path = Path::new(output).join(format!("{}-trials.jsonl", algorithm));
         let mut records = std::io::BufWriter::new(std::fs::File::create(trials_path)?);
         use std::io::Write;
-        for trial in 0..config.hyperparam.num_iterations {
+        for trial in 0..config.hyperparam.num_trials {
             let mut model = base.clone();
             model.num_items_to_recommend = 20;
             let mut samples = Vec::new();
@@ -268,19 +300,15 @@ fn main() -> anyhow::Result<()> {
             }
         }
         let snippet = model_snippet(&best_model);
-        let serving = format!("[server]\nhost = \"{}\"\nport = {}\nnum_workers = {}\n\n[data]\ntraining_data_path = {:?}\n\n[logic]\nenable_business_logic = {}\nexample_item_id = {}\n\n{}", config.server.host, config.server.port, config.server.num_workers, training, config.hyperparam.enable_business_logic, config.logic.example_item_id, snippet);
-        let serving_path = Path::new(output).join(format!("{}-serving.toml", algorithm));
-        std::fs::write(&serving_path, serving)?;
-        let reloaded = AppConfig::try_new(serving_path.to_string_lossy().into_owned())?;
+        let application = format!("[hyperparam]\ntraining_data_path = {:?}\nvalidation_data_path = {:?}\ntest_data_path = {:?}\n\n[server]\nhost = \"{}\"\nport = {}\nnum_workers = {}\n\n[data]\ntraining_data_path = {:?}\n\n[logic]\nenable_business_logic = {}\nexample_item_id = {}\n\n{}", training, config.hyperparam.validation_data_path, config.hyperparam.test_data_path, config.server.host, config.server.port, config.server.num_workers, training, config.hyperparam.enable_business_logic, config.logic.example_item_id, snippet);
+        let application_path = Path::new(output).join(format!("{}.toml", algorithm));
+        std::fs::write(&application_path, application)?;
+        let reloaded = AppConfig::try_new(application_path.to_string_lossy().into_owned())?;
         anyhow::ensure!(
             serde_json::to_value(&reloaded.model)? == serde_json::to_value(&best_model)?,
             "generated configuration did not reload"
         );
-        std::fs::write(
-            Path::new(output).join(format!("{}-model.toml", algorithm)),
-            &snippet,
-        )?;
-        let result = json!({"algorithm":algorithm, "best_hyperparameters":best_parameters, "best_validation_mrr_at_20":best_score, "optimization":{"optimizer":"TPE", "iterations":config.hyperparam.num_iterations, "seed":config.hyperparam.seed, "ranges":ranges, "objective":"maximize MRR@20"}, "evaluation":{"training_data":training, "validation_data":config.hyperparam.validation_data_path, "test_data":config.hyperparam.test_data_path, "cutoff":20, "business_logic":config.hyperparam.enable_business_logic}, "model_config":snippet, "trials":trials});
+        let result = json!({"algorithm":algorithm, "best_hyperparameters":best_parameters, "best_validation_mrr_at_20":best_score, "optimization":{"optimizer":"TPE", "iterations":config.hyperparam.num_trials, "seed":config.hyperparam.seed, "ranges":ranges, "objective":"maximize MRR@20"}, "evaluation":{"training_data":training, "validation_data":config.hyperparam.validation_data_path, "test_data":config.hyperparam.test_data_path, "cutoff":20, "business_logic":config.hyperparam.enable_business_logic}, "model_config":snippet, "trials":trials});
         std::fs::write(
             Path::new(output).join(format!("{}.json", algorithm)),
             serde_json::to_string_pretty(&result)?,
@@ -290,7 +318,7 @@ fn main() -> anyhow::Result<()> {
             algorithm,
             best_score,
             serde_json::to_string(&best_parameters)?,
-            serving_path.display()
+            application_path.display()
         );
         comparison.push(result);
     }
@@ -313,6 +341,49 @@ mod tests {
         }
         assert!(range("[1.5, 5]", true, true).is_err());
         assert!(range("[0, 5]", false, false).is_ok());
+    }
+
+    #[test]
+    fn algorithm_ranges_override_shared_defaults_and_exclude_unused_axes() {
+        let mut config = AppConfig::try_new("configs/hpo.toml".into()).unwrap();
+        assert!(config.hyperparam.multi_algorithm);
+        assert!(config.hyperparam.algorithms.values().all(|a| a.enabled));
+        config
+            .hyperparam
+            .algorithms
+            .get_mut("stan")
+            .unwrap()
+            .ranges
+            .insert("lambda_spw".into(), "[0.25, 2.05]".into());
+        config
+            .hyperparam
+            .algorithms
+            .get_mut("stan")
+            .unwrap()
+            .ranges
+            .insert("m_most_recent_sessions".into(), "[10, 30]".into());
+        // An inapplicable parameter is not passed to TPE or range validation.
+        config
+            .hyperparam
+            .algorithms
+            .get_mut("stan")
+            .unwrap()
+            .ranges
+            .insert("pop_boost".into(), "unused".into());
+        let stan = axes(&config, Algorithm::Stan).unwrap();
+        assert_eq!(stan.ranges["lambda_spw"], (0.25, 2.05));
+        assert_eq!(stan.max_m, 30);
+        assert!(!stan.ranges.contains_key("pop_boost"));
+        assert!(!stan.ranges.contains_key("idf_weighting"));
+        assert_eq!(axes(&config, Algorithm::Sknn).unwrap().max_m, 2500);
+        config
+            .hyperparam
+            .algorithms
+            .get_mut("stan")
+            .unwrap()
+            .ranges
+            .insert("lambda_inh".into(), "[0, 2]".into());
+        assert!(axes(&config, Algorithm::Stan).is_err());
     }
 
     #[test]

@@ -6,7 +6,7 @@ All application configuration parameters can be set with a single config file in
 Minimum Configuration
 ---
 
-The only parameter value that is required and has no default value to fall back on is `training_data_path`. The user must have a training data file, with appropriate data formatting (see [DATA](DATA.md)). Since this parameter can be set with an environment variable, the config file can be left out entirely. In this case, the default values specified below are used for all remaining parameters.
+Serving needs a valid `data.training_data_path`; business filtering defaults to enabled. The user must have a training data file, with appropriate data formatting (see [dataset format](EVALUATION.md)). The training path can also be set through the `TRAINING_DATA` environment variable. HPO dataset paths are optional for serving.
 
 Full Parameter List
 ---
@@ -45,6 +45,9 @@ m_most_recent_sessions = 500
 neighborhood_size_k = 500
 num_items_to_recommend = 21
 max_items_in_session = 2
+
+[logic]
+enable_business_logic = true
 ```
 
 Algorithm selection
@@ -86,12 +89,24 @@ Scoring options under `[model.knn]`:
 | lambda_ipw | VSKNN_STAN | 1.02; latest matching current-position decay |
 | lambda_idf | VSKNN_STAN | 5; additive score IDF multiplier |
 
-Set a lambda to `none` to disable its component. Decay lambdas must be positive finite numbers. Legacy `[model] idf_weighting` remains integer/default 1; it is separate from reference IDF. TPE uses the selected algorithm and scoring config; the existing IDF search axis maps to VS-KNN idf_weighting or VSKNN_STAN lambda_idf. It has no effect for SKNN/STAN. Other scoring settings remain configurable and fixed during TPE searches. TPE is the only supported optimizer.
+Set a lambda to `"none"` (legacy unquoted `none` also parses) to disable its component. Decay lambdas must be positive finite numbers. Legacy `[model] idf_weighting` now accepts floating-point values, default 1; integer configurations remain compatible. This VMIS weight is separate from reference IDF. TPE searches only relevant axes, with floating-point scoring parameters and per-algorithm lambda ranges; see [HPO](HYPERPARAMETER_SEARCH.md).
 
-Build/load a chronological snapshot:
+Build a chronological snapshot using the tested [example command](EVALUATION.md). Use the same loader for serving, evaluation and HPO.
+
+Set `data.training_data_path` to OUTPUT.vmis for serving/evaluation. Hyperparameter data paths can also reference snapshots; build with at least the maximum candidate budget searched. Serving does not require a hyperparameter section. Evaluation needs its test path; HPO needs training and validation paths. Avro indexes require raw training aggregate metadata (`training-stats.bin`; see [Preparation](Preparation.md)) and support set-based scoring, but positional scoring and reference event-frequency IDF require rebuilding from CSV. See [compatibility and migration](knn-compatibility.md) and [measured results](knn-benchmark.md), including explicitly unsupported optional Python extensions.
+
+
+Unified HPO and application configurations
+---
+
+[configs/hpo.toml](../configs/hpo.toml) defines shared training, validation and test paths, TPE iterations/seed, `output_dir`, and all five enabled algorithms under `[hyperparam.algorithms.NAME]`. Set `enabled = false` to skip an algorithm; all-disabled runs fail. Algorithm-specific `PARAMETER_range = [low, high]` settings override shared legacy ranges; see [search ranges and defaults](HYPERPARAMETER_SEARCH.md).
+
+HPO files may omit `[data]` and `[model]`; TPE uses `[hyperparam] training_data_path`. The exported `hpo-results/NAME.toml` supplies `[data]`, the exact selected `[model]` and `[model.knn]`, `[logic]`, `[server]`, and optional `[hyperparam]` dataset fields. Both evaluator and serving load this same file through `AppConfig`. Search ranges, algorithm sections, seed and trial budget are optional for these applications. Evaluation uses `[hyperparam] test_data_path`; serving ignores holdout paths. Legacy application configs and CLI overrides continue to work.
 
 ```powershell
-cargo run --release --bin build_index -- CONFIG OUTPUT.vmis
+.\tpe_hyperparameter_optm.exe configs/hpo.toml
+.\evaluator.exe hpo-results/stan.toml
+.\serving.exe hpo-results/stan.toml
 ```
 
-Set `data.training_data_path` to OUTPUT.vmis for serving/evaluation. Hyperparameter data paths can also reference snapshots; build with at least the maximum candidate budget searched. Existing required hyperparameter config fields still apply. Avro indexes require raw training aggregate metadata (`training-stats.bin`; see [Preparation](Preparation.md)) and support set-based scoring, but positional scoring and reference event-frequency IDF require rebuilding from CSV. See [compatibility and migration](knn-compatibility.md) and [measured results](knn-benchmark.md), including explicitly unsupported optional Python extensions.
+Run from the repository/extracted package root so relative data paths resolve correctly. Linux/macOS use `./` and omit `.exe`.

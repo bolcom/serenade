@@ -286,7 +286,7 @@ pub fn score_neighbors(
         let mut items = index.items_for_session(&id).to_vec();
         items.sort_unstable();
         items.dedup();
-        let intersection = items.iter().filter(|i| weights.contains_key(i)).count() as f64;
+        let intersection = items.iter().filter(|i| weights.contains_key(*i)).count() as f64;
         let (a, b) = (items.len() as f64, weights.len() as f64);
         if a == 0.0 {
             continue;
