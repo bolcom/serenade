@@ -63,7 +63,7 @@ impl VMISIndex {
                         let decay_factor =
                             (len_evolving_session - pos) as f64 / qty_unique_session_items;
                         // Loop over all similar sessions.
-                        'session_loop: for session_id in similar_sessions {
+                        'session_loop: for session_id in similar_sessions.iter().take(m) {
                             match session_similarities.get_mut(session_id) {
                                 Some(similarity) => *similarity += decay_factor,
                                 None => {
@@ -147,7 +147,19 @@ impl VMISIndex {
             }
             Self::try_new_from_csv(path, m, legacy_idf_weight).map_err(|e| e.to_string())?
         };
-        if index
+        index.prepare_for_model(m, legacy_idf_weight, config)?;
+        Ok(index)
+    }
+
+    /// Reconfigure scoring statistics without rebuilding postings or loading events.
+    pub fn prepare_for_model(
+        &mut self,
+        m: usize,
+        legacy_idf_weight: f64,
+        config: &super::algorithms::KnnConfig,
+    ) -> Result<(), String> {
+        config.validate()?;
+        if self
             .candidate_capacity
             .map_or(false, |capacity| m > capacity)
         {
@@ -155,42 +167,42 @@ impl VMISIndex {
                 "Requested m exceeds snapshot posting capacity; rebuild from training CSV".into(),
             );
         }
-        if config.positional() && !index.chronological_events {
+        if config.positional() && !self.chronological_events {
             return Err(
                 "This snapshot lacks chronological repeated events; rebuild from training CSV"
                     .into(),
             );
         }
-        if config.needs_reference_idf() && !index.reference_idf {
-            if !index.chronological_events {
+        if config.needs_reference_idf() && !self.reference_idf {
+            if !self.chronological_events {
                 return Err(
                     "This snapshot lacks raw events for reference IDF; rebuild from training CSV"
                         .into(),
                 );
             }
-            index.set_reference_idf();
+            self.set_reference_idf();
         } else if config.algorithm == super::algorithms::Algorithm::Vmis
-            && index.chronological_events
+            && self.chronological_events
         {
             // Restore the legacy formula without adding a second permanent IDF map.
             let mut counts = HashMap::<u64, usize>::new();
-            for sequence in &index.session_to_items_sorted {
+            for sequence in &self.session_to_items_sorted {
                 let unique: hashbrown::HashSet<_> = sequence.iter().copied().collect();
-                if unique.len() <= index.training_data_stats.qty_events_p99_5 as usize {
+                if unique.len() <= self.training_data_stats.qty_events_p99_5 as usize {
                     for item in unique {
                         *counts.entry(item).or_default() += 1;
                     }
                 }
             }
             let total = counts.values().sum::<usize>() as f64;
-            index.item_to_idf_score = counts
+            self.item_to_idf_score = counts
                 .into_iter()
                 .map(|(item, count)| (item, (total / count as f64).ln() * legacy_idf_weight))
                 .collect();
-            index.reference_idf = false;
+            self.reference_idf = false;
         }
-        index.validate().map_err(|e| e.to_string())?;
-        Ok(index)
+        self.validate().map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     /// Historical events for evaluation statistics; no second event corpus is stored.
@@ -635,7 +647,7 @@ impl SimilarityComputationNew for VMISIndex {
                         let decay_factor =
                             (len_evolving_session - pos) as f64 / qty_unique_session_items;
                         // Loop over all similar sessions.
-                        'session_loop: for session_id in similar_sessions {
+                        'session_loop: for session_id in similar_sessions.iter().take(m) {
                             match session_similarities.get_mut(session_id) {
                                 Some(similarity) => *similarity += decay_factor,
                                 None => {
@@ -670,7 +682,10 @@ impl SimilarityComputationNew for VMISIndex {
 
         // Return top-k
         let mut closest_neighbors: BinaryHeap<SessionScore> = BinaryHeap::with_capacity(k);
-        for (session_id, score) in session_similarities.iter() {
+        // Stable traversal also fixes accumulation order when neighbor scores tie.
+        let mut similarities: Vec<_> = session_similarities.iter().collect();
+        similarities.sort_unstable_by_key(|(id, _)| **id);
+        for (session_id, score) in similarities {
             if closest_neighbors.len() < k {
                 let scored_session = SessionScore::new(*session_id, *score);
                 closest_neighbors.push(scored_session);
@@ -680,8 +695,13 @@ impl SimilarityComputationNew for VMISIndex {
                     let scored_session = SessionScore::new(*session_id, *score);
                     *bottom = scored_session;
                 } else if (score - bottom.score).abs() < f64::EPSILON
-                    && (self.session_to_max_time_stamp[*session_id as usize]
-                        > self.session_to_max_time_stamp[bottom.id as usize])
+                    && ((
+                        self.session_to_max_time_stamp[*session_id as usize],
+                        std::cmp::Reverse(*session_id),
+                    ) > (
+                        self.session_to_max_time_stamp[bottom.id as usize],
+                        std::cmp::Reverse(bottom.id),
+                    ))
                 {
                     let scored_session = SessionScore::new(*session_id, *score);
                     *bottom = scored_session;

@@ -35,7 +35,7 @@ async fn main() -> std::io::Result<()> {
         VMISIndex::load_for_model(
             &config.data.training_data_path,
             config.model.m_most_recent_sessions,
-            config.model.idf_weighting as f64,
+            config.model.idf_weighting,
             &config.model.knn,
         )
         .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?,

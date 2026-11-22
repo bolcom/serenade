@@ -30,7 +30,8 @@ impl Ord for RankedNeighbor {
 }
 use super::{similarity_indexed::SimilarityComputationNew, vmis_index::VMISIndex, SessionScore};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Algorithm {
     Vmis,
     Sknn,
@@ -51,7 +52,26 @@ impl std::str::FromStr for Algorithm {
         }
     }
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+impl Algorithm {
+    pub const ALL: [Self; 5] = [
+        Self::Vmis,
+        Self::Sknn,
+        Self::Vsknn,
+        Self::Stan,
+        Self::VsknnStan,
+    ];
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Vmis => "vmis",
+            Self::Sknn => "sknn",
+            Self::Vsknn => "vsknn",
+            Self::Stan => "stan",
+            Self::VsknnStan => "vsknn_stan",
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Similarity {
     Jaccard,
     Cosine,
@@ -72,7 +92,8 @@ impl std::str::FromStr for Similarity {
         }
     }
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Weighting {
     Same,
     Linear,
@@ -127,7 +148,7 @@ impl Weighting {
         }
     }
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct KnnConfig {
     pub algorithm: Algorithm,
     pub similarity: Similarity,
@@ -253,10 +274,18 @@ pub fn score_neighbors(
         return Vec::new();
     }
     let weights = current_weights(current, config, index);
-    let norm = weights.values().map(|v| v * v).sum::<f64>().sqrt();
+    let mut ordered_weights: Vec<_> = weights.iter().collect();
+    ordered_weights.sort_unstable_by_key(|(item, _)| **item);
+    let norm = ordered_weights
+        .iter()
+        .map(|(_, v)| *v * *v)
+        .sum::<f64>()
+        .sqrt();
     let mut top = BinaryHeap::<RankedNeighbor>::with_capacity(k);
     for (order, &id) in candidates.iter().enumerate() {
-        let items: HashSet<_> = index.items_for_session(&id).iter().copied().collect();
+        let mut items = index.items_for_session(&id).to_vec();
+        items.sort_unstable();
+        items.dedup();
         let intersection = items.iter().filter(|i| weights.contains_key(i)).count() as f64;
         let (a, b) = (items.len() as f64, weights.len() as f64);
         if a == 0.0 {
@@ -308,8 +337,7 @@ pub fn score_neighbors(
             .total_cmp(&a.neighbor.score)
             .then(a.order.cmp(&b.order))
     });
-    let result = selected.into_iter().map(|n| n.neighbor).collect();
-    result
+    selected.into_iter().map(|n| n.neighbor).collect()
 }
 
 /// Raw reference item scores, before shared serving filters and normalization.

@@ -41,23 +41,40 @@ where
 pub fn read_test_data_timed(
     test_data_file: &str,
 ) -> HashMap<TrainingSessionId, Vec<(ItemId, f64)>> {
+    try_read_test_data_timed(test_data_file).expect("Cannot read test data")
+}
+
+pub fn try_read_test_data_timed(
+    test_data_file: &str,
+) -> anyhow::Result<HashMap<TrainingSessionId, Vec<(ItemId, f64)>>> {
     let mut sessions = HashMap::<TrainingSessionId, Vec<(ItemId, f64)>>::new();
-    for line in create_buffered_line_reader(test_data_file)
-        .expect("Cannot read test data")
+    for (line_number, line) in create_buffered_line_reader(test_data_file)?
+        .enumerate()
         .skip(1)
     {
-        let line = line.expect("Cannot read test event");
-        let mut fields = line.split_whitespace();
-        let session = fields.next().unwrap().parse().unwrap();
-        let item = fields.next().unwrap().parse().unwrap();
-        let time: f64 = fields.next().unwrap().parse().unwrap();
-        assert!(time.is_finite(), "Event timestamp must be finite");
+        let line = line?;
+        let fields: Vec<_> = line.split_whitespace().collect();
+        anyhow::ensure!(
+            fields.len() == 3,
+            "{}:{}: expected SessionId ItemId Time",
+            test_data_file,
+            line_number + 1
+        );
+        let session = fields[0].parse()?;
+        let item = fields[1].parse()?;
+        let time: f64 = fields[2].parse()?;
+        anyhow::ensure!(
+            time.is_finite() && time >= 0.0 && time.round() <= u32::MAX as f64,
+            "{}:{}: timestamp must fit u32",
+            test_data_file,
+            line_number + 1
+        );
         sessions.entry(session).or_default().push((item, time));
     }
     for events in sessions.values_mut() {
         events.sort_by(|a, b| a.1.total_cmp(&b.1));
     }
-    sessions
+    Ok(sessions)
 }
 
 #[cfg(test)]

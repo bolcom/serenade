@@ -21,7 +21,16 @@ pub struct EvaluationReporter {
     f1: F1score,
 }
 
-impl EvaluationReporter {}
+impl EvaluationReporter {
+    pub fn scores(&self) -> [f64; 4] {
+        [
+            self.mrr.result(),
+            self.ndcg.result(),
+            self.hitrate.result(),
+            self.coverage.result(),
+        ]
+    }
+}
 
 impl EvaluationReporter {
     pub fn new(

@@ -27,11 +27,10 @@ impl Eq for SessionScore {}
 
 impl Ord for SessionScore {
     fn cmp(&self, other: &Self) -> Ordering {
-        match self.score.partial_cmp(&other.score) {
-            Some(Ordering::Less) => Ordering::Greater,
-            Some(Ordering::Greater) => Ordering::Less,
-            _ => Ordering::Equal,
-        }
+        other
+            .score
+            .total_cmp(&self.score)
+            .then(self.id.cmp(&other.id))
     }
 }
 
@@ -57,12 +56,10 @@ impl Eq for ItemScore {}
 
 impl Ord for ItemScore {
     fn cmp(&self, other: &Self) -> Ordering {
-        // reverse order by score
-        match self.score.partial_cmp(&other.score) {
-            Some(Ordering::Less) => Ordering::Greater,
-            Some(Ordering::Greater) => Ordering::Less,
-            _ => Ordering::Equal,
-        }
+        other
+            .score
+            .total_cmp(&self.score)
+            .then(self.id.cmp(&other.id))
     }
 }
 
@@ -87,7 +84,10 @@ impl SessionTime {
 impl Ord for SessionTime {
     fn cmp(&self, other: &Self) -> Ordering {
         // reverse order by time
-        other.time.cmp(&self.time)
+        other
+            .time
+            .cmp(&self.time)
+            .then(self.session_id.cmp(&other.session_id))
     }
 }
 
@@ -298,7 +298,7 @@ fn rank_items<I: SimilarityComputationNew>(
             }
         } else {
             let mut bottom = top_items.peek_mut().unwrap();
-            if scored_item.score > bottom.score {
+            if scored_item < *bottom {
                 if enable_business_logic {
                     let reco_item_attribs = index.find_attributes(&reco_item_id);
                     if passes_business_rules(current_item_attribs, reco_item_attribs) {

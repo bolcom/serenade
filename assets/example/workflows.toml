@@ -1,0 +1,38 @@
+config_type = "toml"
+
+[server]
+host = "0.0.0.0"
+port = 8081
+num_workers = 4
+
+[log]
+level = "info" # not implemented
+
+[data]
+training_data_path="assets/example/train.txt"
+
+[model]
+algorithm = "vmis"
+m_most_recent_sessions = 500
+neighborhood_size_k = 50
+max_items_in_session = 2
+num_items_to_recommend = 20
+idf_weighting = 1
+
+[logic]
+enable_business_logic = true
+example_item_id = 13598
+
+[hyperparam]
+training_data_path = "assets/example/train.txt"
+test_data_path = "assets/example/test.txt"
+validation_data_path = "assets/example/valid.txt"
+num_iterations = 3
+seed = 42
+save_records = true
+out_path = "results.csv"
+enable_business_logic = true
+n_most_recent_sessions_range = [100, 200]
+neighborhood_size_k_range = [20, 50]
+last_items_in_session_range = [2, 5]
+idf_weighting_range = [0, 5]

@@ -16,7 +16,7 @@ const DEFAULT_MOST_RECENT_SESSIONS_M: usize = 500;
 const DEFAULT_NEIGHBORHOOD_SIZE_K: usize = 500;
 const DEFAULT_NUM_ITEMS_TO_RECOMMEND: usize = 21;
 const DEFAULT_MAX_ITEMS_IN_SESSION: usize = 2;
-const DEFAULT_IDF_WEIGHTING: usize = 1;
+const DEFAULT_IDF_WEIGHTING: f64 = 1.0;
 
 pub struct AppConfig {
     pub server: ServerConfig,
@@ -41,13 +41,14 @@ pub struct DataConfig {
     pub training_data_path: String,
 }
 
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct ModelConfig {
     pub knn: crate::vmisknn::algorithms::KnnConfig,
     pub m_most_recent_sessions: usize,
     pub neighborhood_size_k: usize,
     pub num_items_to_recommend: usize,
     pub max_items_in_session: usize,
-    pub idf_weighting: usize,
+    pub idf_weighting: f64,
 }
 
 pub struct LogicConfig {
@@ -60,6 +61,8 @@ pub struct HyperparamConfig {
     pub test_data_path: String,
     pub validation_data_path: String,
     pub num_iterations: usize,
+    pub seed: u64,
+    pub search_ranges: std::collections::BTreeMap<String, String>,
     pub save_records: bool,
     pub out_path: String,
     pub enable_business_logic: bool,
@@ -78,6 +81,10 @@ impl AppConfig {
         anyhow::ensure!(
             (1..=65535).contains(&self.server.port),
             "server.port must be in 1..=65535"
+        );
+        anyhow::ensure!(
+            self.model.idf_weighting.is_finite(),
+            "model.idf_weighting must be finite"
         );
         for (name, value) in [
             ("server.num_workers", self.server.num_workers),
@@ -236,62 +243,69 @@ impl LogicConfig {
 
 impl HyperparamConfig {
     fn parse(conf: &Config, path: ConfPath) -> anyhow::Result<HyperparamConfig> {
+        let mut search_ranges = std::collections::BTreeMap::new();
+        for key in [
+            "lambda_spw",
+            "lambda_snh",
+            "lambda_inh",
+            "lambda_ipw",
+            "lambda_idf",
+            "pop_boost",
+        ] {
+            if let Some(value) = knn_value(conf, &path, &format!("{}_range", key))? {
+                search_ranges.insert(key.to_owned(), value);
+            }
+        }
         Ok(HyperparamConfig {
+            seed: conf
+                .get(path.push("seed"))
+                .trim()
+                .value_or_default("seed", 42)?,
+            search_ranges,
             training_data_path: conf
                 .get(path.push("training_data_path"))
                 .unquote()
-                .value()
-                .map_err(|e| anyhow::anyhow!("{}", e))?,
+                .value_or_default("training_data_path", String::new())?,
             test_data_path: conf
                 .get(path.push("test_data_path"))
                 .unquote()
-                .value()
-                .map_err(|e| anyhow::anyhow!("{}", e))?,
+                .value_or_default("test_data_path", String::new())?,
             validation_data_path: conf
                 .get(path.push("validation_data_path"))
                 .unquote()
-                .value()
-                .map_err(|e| anyhow::anyhow!("{}", e))?,
+                .value_or_default("validation_data_path", String::new())?,
             num_iterations: conf
                 .get(path.push("num_iterations"))
                 .trim()
-                .value()
-                .map_err(|e| anyhow::anyhow!("{}", e))?,
+                .value_or_default("num_iterations", 15)?,
             save_records: conf
                 .get(path.push("save_records"))
                 .trim()
-                .value()
-                .map_err(|e| anyhow::anyhow!("{}", e))?,
+                .value_or_default("save_records", true)?,
             out_path: conf
                 .get(path.push("out_path"))
                 .unquote()
-                .value()
-                .map_err(|e| anyhow::anyhow!("{}", e))?,
+                .value_or_default("out_path", String::from("results.csv"))?,
             enable_business_logic: conf
                 .get(path.push("enable_business_logic"))
                 .trim()
-                .value()
-                .map_err(|e| anyhow::anyhow!("{}", e))?,
+                .value_or_default("enable_business_logic", true)?,
             n_most_recent_sessions_range: conf
                 .get(path.push("n_most_recent_sessions_range"))
                 .trim()
-                .value()
-                .map_err(|e| anyhow::anyhow!("{}", e))?,
+                .value_or_default("n_most_recent_sessions_range", String::from("[100, 2500]"))?,
             neighborhood_size_k_range: conf
                 .get(path.push("neighborhood_size_k_range"))
                 .trim()
-                .value()
-                .map_err(|e| anyhow::anyhow!("{}", e))?,
+                .value_or_default("neighborhood_size_k_range", String::from("[50, 1500]"))?,
             last_items_in_session_range: conf
                 .get(path.push("last_items_in_session_range"))
                 .trim()
-                .value()
-                .map_err(|e| anyhow::anyhow!("{}", e))?,
+                .value_or_default("last_items_in_session_range", String::from("[1, 20]"))?,
             idf_weighting_range: conf
                 .get(path.push("idf_weighting_range"))
                 .trim()
-                .value()
-                .map_err(|e| anyhow::anyhow!("{}", e))?,
+                .value_or_default("idf_weighting_range", String::from("[0, 5]"))?,
         })
     }
 }
@@ -410,7 +424,7 @@ mod knn_config_tests {
         let config = model("[model]\nneighborhood_size_k=42\n");
         assert_eq!(config.knn.algorithm, Algorithm::Vmis);
         assert_eq!(config.neighborhood_size_k, 42);
-        assert_eq!(config.idf_weighting, 1);
+        assert_eq!(config.idf_weighting, 1.0);
     }
     #[test]
     fn selected_model_uses_reference_defaults_and_explicit_overrides() {

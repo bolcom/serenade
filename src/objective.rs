@@ -1,7 +1,3 @@
-use crate::{io, vmisknn};
-
-use crate::metrics::mrr::Mrr;
-use crate::metrics::SessionMetric;
 use crate::vmisknn::vmis_index::VMISIndex;
 
 // objective function
@@ -30,41 +26,14 @@ pub fn objective_with_model(
     )
     .expect("Cannot load selected kNN model");
 
-    let ordered_test_sessions = io::read_test_data_timed(&*test_data_file);
-
-    let qty_max_reco_results = 20;
-    let mut mymetric = Mrr::new(qty_max_reco_results);
-
-    ordered_test_sessions
-        .iter()
-        .for_each(|(_session_id, events)| {
-            let evolving_session_items: Vec<_> = events.iter().map(|(item, _)| *item).collect();
-            for session_state in 1..evolving_session_items.len() {
-                // use last x items of evolving session
-                let start_index = if session_state > last_items_in_session as usize {
-                    session_state - last_items_in_session as usize
-                } else {
-                    0
-                };
-                let session: &[u64] = &evolving_session_items[start_index..session_state];
-                let recommendations = vmisknn::predict_with_model(
-                    &vmis_index,
-                    &session,
-                    neighborhood_size_k as usize,
-                    n_most_recent_sessions as usize,
-                    qty_max_reco_results,
-                    enable_business_logic,
-                    &model,
-                    events[session_state - 1].1,
-                );
-                let recommended_items = recommendations
-                    .into_sorted_vec()
-                    .iter()
-                    .map(|scored| scored.id)
-                    .collect::<Vec<u64>>();
-                let actual_next_items = &evolving_session_items[session_state..];
-                mymetric.add(&recommended_items, actual_next_items);
-            }
-        });
-    return mymetric.result();
+    let data = crate::offline::EvaluationData::load(&test_data_file).expect("load objective data");
+    let config = crate::config::ModelConfig {
+        knn: model,
+        m_most_recent_sessions: n_most_recent_sessions as usize,
+        neighborhood_size_k: neighborhood_size_k as usize,
+        max_items_in_session: last_items_in_session as usize,
+        num_items_to_recommend: 20,
+        idf_weighting,
+    };
+    crate::offline::evaluate(&vmis_index, &data, &config, enable_business_logic).mrr_at_20
 }
