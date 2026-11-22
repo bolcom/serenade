@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/serenade?style=flat-square)](https://crates.io/crates/serenade)
 [![Crates.io](https://img.shields.io/crates/d/serenade?style=flat-square)](https://crates.io/crates/serenade)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](https://github.com/bolcom/serenade/LICENSE.md)
-[![Build Status](https://img.shields.io/github/workflow/status/bolcom/serenade/Release/v0.2.6?style=flat-square)](https://github.com/bolcom/serenade/actions/workflows/release.yml?query=branch%3Av0.2.6)
+[![Build Status](https://github.com/bkersbergen/serenade/actions/workflows/release.yml/badge.svg)](https://github.com/bkersbergen/serenade/actions/workflows/release.yml)
 [![API Docs](https://docs.rs/serenade/badge.svg)](https://docs.rs/serenade)
 [![Contributors](https://img.shields.io/github/contributors/bolcom/serenade?style=flat-square)](https://github.com/bolcom/serenade/graphs/contributors)
 
