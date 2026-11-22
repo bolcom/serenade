@@ -178,7 +178,10 @@ def main():
         assert actual == expected, "Archive contents differ from package manifest"
         smoke(package)
         checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
-        (dist / (archive.name + ".sha256")).write_text(f"{checksum}  {archive.name}\n")
+        # Linux sha256sum treats a CR from Windows text mode as part of the filename.
+        (dist / (archive.name + ".sha256")).write_bytes(
+            f"{checksum}  {archive.name}\n".encode("ascii")
+        )
         print(f"Verified {archive.name}: {sorted(actual)}")
 
 
