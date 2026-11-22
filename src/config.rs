@@ -62,6 +62,7 @@ pub struct AlgorithmSearchConfig {
 }
 
 pub struct HyperparamConfig {
+    pub objective: crate::metrics::objective::Objective,
     pub output_dir: String,
     pub algorithms: std::collections::BTreeMap<String, AlgorithmSearchConfig>,
     // Legacy application/HPO files keep their single-model CLI default.
@@ -306,6 +307,11 @@ impl HyperparamConfig {
             );
         }
         Ok(HyperparamConfig {
+            objective: conf
+                .get(path.push("objective"))
+                .unquote()
+                .value_or_default("objective", "mrr@20".to_owned())?
+                .parse()?,
             output_dir: conf
                 .get(path.push("output_dir"))
                 .unquote()
@@ -418,7 +424,7 @@ fn parse_knn_config(
     ] {
         anyhow::ensure!(
             knn_value(conf, &options, key)?.is_none(),
-            "model.knn.{} is not supported; see docs/knn-compatibility.md",
+            "model.knn.{} is not supported",
             key
         );
     }
@@ -522,6 +528,35 @@ mod tests {
             assert!(error.to_string().contains(key));
         }
         assert_eq!(server_value("host", "localhost").unwrap().port, 8080);
+    }
+
+    #[test]
+    fn objective_defaults_and_errors_survive_configuration_loading() {
+        let parse = |text: &str| {
+            let mut config = Config::default();
+            config.add_source(
+                ConfigText::new(std::io::Cursor::new(text.as_bytes()), "test").unwrap(),
+            );
+            HyperparamConfig::parse(&config, ConfPath::from(&["hyperparam"]))
+        };
+        assert_eq!(
+            parse("[hyperparam]\n").unwrap().objective,
+            Default::default()
+        );
+        for value in ["mrr@20", "ndcg@8", "hitrate@10", "NDCG@8"] {
+            assert_eq!(
+                parse(&format!("[hyperparam]\nobjective = \"{value}\"\n"))
+                    .unwrap()
+                    .objective,
+                value.parse().unwrap()
+            );
+        }
+        for value in ["precision@8", "mrr", "mrr@0", "mrr@-8", "ndcg@@8"] {
+            let error = parse(&format!("[hyperparam]\nobjective = \"{value}\"\n"))
+                .err()
+                .unwrap();
+            assert!(error.to_string().contains("hyperparam.objective"));
+        }
     }
 
     #[test]

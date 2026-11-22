@@ -25,7 +25,7 @@ indices/
 dataset*
 *.csv
 assets/example/*
-!assets/example/workflows.toml
+!assets/example/example.zip
 Serenade-*.tar.gz
 
 # Local copies of the pinned upstream Python scoring references.
@@ -33,7 +33,6 @@ Serenade-*.tar.gz
 /.baseline/
 
 !/tests/reference/generate.py
-!/docs/example-knn-results.csv
 
 /evaluation-results.json
 /hpo-results/

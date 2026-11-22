@@ -11,7 +11,7 @@ import subprocess
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline", default="a142ab81dd49e774075f98094409eb103747eebe")
-    parser.add_argument("--output", type=Path, default=Path("docs/capacity-comparison-results.json"))
+    parser.add_argument("--output", type=Path, default=Path("target/capacity-comparison-results.json"))
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     os.chdir(root)

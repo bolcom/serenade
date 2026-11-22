@@ -153,7 +153,7 @@ fn apply(model: &mut ModelConfig, name: &str, value: f64) {
 }
 fn model_snippet(m: &ModelConfig) -> String {
     let k = &m.knn;
-    let mut text = format!("[model]\nalgorithm = \"{}\"\nm_most_recent_sessions = {}\nneighborhood_size_k = {}\nmax_items_in_session = {}\nnum_items_to_recommend = 20\nidf_weighting = {}\n\n[model.knn]\nsimilarity = \"{:?}\"\nweighting = \"{:?}\"\nweighting_score = \"{:?}\"\nweighting_time = {}\nidf_weighting = {}\nidf_weighting_session = {}\nremind = {}\nnormalize = {}\npop_boost = {}\n", k.algorithm.name(), m.m_most_recent_sessions, m.neighborhood_size_k, m.max_items_in_session, m.idf_weighting, k.similarity, k.weighting, k.weighting_score, k.weighting_time, k.idf_weighting, k.idf_weighting_session, k.remind, k.normalize, k.pop_boost).to_lowercase();
+    let mut text = format!("[model]\nalgorithm = \"{}\"\nm_most_recent_sessions = {}\nneighborhood_size_k = {}\nmax_items_in_session = {}\nnum_items_to_recommend = {}\nidf_weighting = {}\n\n[model.knn]\nsimilarity = \"{:?}\"\nweighting = \"{:?}\"\nweighting_score = \"{:?}\"\nweighting_time = {}\nidf_weighting = {}\nidf_weighting_session = {}\nremind = {}\nnormalize = {}\npop_boost = {}\n", k.algorithm.name(), m.m_most_recent_sessions, m.neighborhood_size_k, m.max_items_in_session, m.num_items_to_recommend, m.idf_weighting, k.similarity, k.weighting, k.weighting_score, k.weighting_time, k.idf_weighting, k.idf_weighting_session, k.remind, k.normalize, k.pop_boost).to_lowercase();
     for (name, value) in [
         ("lambda_spw", k.lambda_spw),
         ("lambda_snh", k.lambda_snh),
@@ -226,7 +226,12 @@ fn main() -> anyhow::Result<()> {
         .map(String::as_str)
         .unwrap_or(&config.hyperparam.output_dir);
     std::fs::create_dir_all(output)?;
-    println!("algorithm\tbest validation MRR@20\thyperparameters\tapplication configuration");
+    let objective = config.hyperparam.objective;
+    println!("Objective: {}", objective);
+    println!(
+        "algorithm\tbest validation {}\thyperparameters\tapplication configuration",
+        objective
+    );
     let mut comparison = Vec::new();
     for (base, search) in models.into_iter().zip(searches) {
         let Search {
@@ -236,7 +241,6 @@ fn main() -> anyhow::Result<()> {
         let mut rng = StdRng::seed_from_u64(config.hyperparam.seed);
         let mut best_score = f64::NEG_INFINITY;
         let mut best_model = base.clone();
-        best_model.num_items_to_recommend = 20;
         let mut best_parameters = BTreeMap::new();
         let mut trials = Vec::new();
         let mut prepared = None;
@@ -245,7 +249,6 @@ fn main() -> anyhow::Result<()> {
         use std::io::Write;
         for trial in 0..config.hyperparam.num_trials {
             let mut model = base.clone();
-            model.num_items_to_recommend = 20;
             let mut samples = Vec::new();
             let mut parameters = BTreeMap::new();
             for axis in &mut axes {
@@ -278,18 +281,30 @@ fn main() -> anyhow::Result<()> {
                     .map_err(anyhow::Error::msg)?;
                 prepared = Some(key);
             }
-            let result = offline::evaluate(
+            let result = offline::evaluate_at_cutoff(
                 &index,
                 &data,
                 &model,
                 config.hyperparam.enable_business_logic,
+                std::num::NonZeroUsize::new(objective.cutoff()).unwrap(),
             );
-            let score = result.mrr_at_20;
+            let score = result.score(objective);
             for (axis, sample) in axes.iter_mut().zip(samples) {
                 axis.optimizer.tell(sample, -score)?;
             }
-            let record =
-                json!({"trial":trial, "hyperparameters":parameters, "validation_mrr_at_20":score});
+            let mut record = json!({"trial":trial, "hyperparameters":parameters,
+                "objective":objective.to_string(), "validation_score":score, "validation_metrics":{"cutoff":result.cutoff, "mrr":result.mrr, "ndcg":result.ndcg, "hitrate":result.hitrate, "coverage":result.coverage}});
+            if objective == Default::default() {
+                record["validation_mrr_at_20"] = json!(score);
+            }
+            println!(
+                "{} trial {}/{}: {} = {:.6}",
+                algorithm,
+                trial + 1,
+                config.hyperparam.num_trials,
+                objective,
+                score
+            );
             writeln!(records, "{}", record)?;
             records.flush()?;
             trials.push(record);
@@ -300,7 +315,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         let snippet = model_snippet(&best_model);
-        let application = format!("[hyperparam]\ntraining_data_path = {:?}\nvalidation_data_path = {:?}\ntest_data_path = {:?}\n\n[server]\nhost = \"{}\"\nport = {}\nnum_workers = {}\n\n[data]\ntraining_data_path = {:?}\n\n[logic]\nenable_business_logic = {}\nexample_item_id = {}\n\n{}", training, config.hyperparam.validation_data_path, config.hyperparam.test_data_path, config.server.host, config.server.port, config.server.num_workers, training, config.hyperparam.enable_business_logic, config.logic.example_item_id, snippet);
+        let application = format!("[hyperparam]\nobjective = {:?}\ntraining_data_path = {:?}\nvalidation_data_path = {:?}\ntest_data_path = {:?}\n\n[server]\nhost = \"{}\"\nport = {}\nnum_workers = {}\n\n[data]\ntraining_data_path = {:?}\n\n[logic]\nenable_business_logic = {}\nexample_item_id = {}\n\n{}", objective.to_string().to_lowercase(), training, config.hyperparam.validation_data_path, config.hyperparam.test_data_path, config.server.host, config.server.port, config.server.num_workers, training, config.hyperparam.enable_business_logic, config.logic.example_item_id, snippet);
         let application_path = Path::new(output).join(format!("{}.toml", algorithm));
         std::fs::write(&application_path, application)?;
         let reloaded = AppConfig::try_new(application_path.to_string_lossy().into_owned())?;
@@ -308,7 +323,10 @@ fn main() -> anyhow::Result<()> {
             serde_json::to_value(&reloaded.model)? == serde_json::to_value(&best_model)?,
             "generated configuration did not reload"
         );
-        let result = json!({"algorithm":algorithm, "best_hyperparameters":best_parameters, "best_validation_mrr_at_20":best_score, "optimization":{"optimizer":"TPE", "iterations":config.hyperparam.num_trials, "seed":config.hyperparam.seed, "ranges":ranges, "objective":"maximize MRR@20"}, "evaluation":{"training_data":training, "validation_data":config.hyperparam.validation_data_path, "test_data":config.hyperparam.test_data_path, "cutoff":20, "business_logic":config.hyperparam.enable_business_logic}, "model_config":snippet, "trials":trials});
+        let mut result = json!({"algorithm":algorithm, "objective":objective.to_string(), "best_hyperparameters":best_parameters, "best_validation_score":best_score, "optimization":{"optimizer":"TPE", "iterations":config.hyperparam.num_trials, "seed":config.hyperparam.seed, "ranges":ranges, "objective":format!("maximize {}", objective)}, "evaluation":{"training_data":training, "validation_data":config.hyperparam.validation_data_path, "test_data":config.hyperparam.test_data_path, "cutoff":objective.cutoff(), "business_logic":config.hyperparam.enable_business_logic}, "model_config":snippet, "trials":trials});
+        if objective == Default::default() {
+            result["best_validation_mrr_at_20"] = json!(best_score);
+        }
         std::fs::write(
             Path::new(output).join(format!("{}.json", algorithm)),
             serde_json::to_string_pretty(&result)?,
@@ -322,6 +340,14 @@ fn main() -> anyhow::Result<()> {
         );
         comparison.push(result);
     }
+    println!("\nAlgorithm\tBest {}", objective);
+    for result in &comparison {
+        println!(
+            "{}\t{:.6}",
+            result["algorithm"].as_str().unwrap(),
+            result["best_validation_score"].as_f64().unwrap()
+        );
+    }
     std::fs::write(
         Path::new(output).join("comparison.json"),
         serde_json::to_string_pretty(&comparison)?,
@@ -332,6 +358,50 @@ fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn objectives_select_different_trials_using_existing_metrics() {
+        use serenade::metrics::evaluation_reporter::EvaluationReporter;
+        use serenade::offline::RankingEvaluationResult;
+        // Trial 0 gets the next interaction; trial 1 gets more of the remaining session.
+        let trials: Vec<_> = [[1, 99, 98, 97], [99, 2, 3, 4]]
+            .iter()
+            .map(|recommendations| {
+                let mut reporter = EvaluationReporter::from_items(1..=100, 8);
+                reporter.add(recommendations, &[1, 2, 3, 4]);
+                let [mrr, ndcg, hitrate, coverage] = reporter.scores();
+                RankingEvaluationResult {
+                    algorithm: "sknn".into(),
+                    predictions: 1,
+                    cutoff: 8,
+                    mrr,
+                    ndcg,
+                    hitrate,
+                    coverage,
+                    duration_seconds: 0.0,
+                    prediction_mean_us: 0.0,
+                    prediction_p95_us: 0.0,
+                }
+            })
+            .collect();
+        for (text, expected) in [("mrr@8", 0), ("ndcg@8", 1), ("hitrate@8", 0)] {
+            let objective = text.parse().unwrap();
+            let mut best_score = f64::NEG_INFINITY;
+            let mut best_trial = None;
+            for (trial, result) in trials.iter().enumerate() {
+                let score = result.score(objective);
+                if score > best_score {
+                    best_score = score;
+                    best_trial = Some(trial);
+                }
+            }
+            assert_eq!(best_trial, Some(expected));
+            // TPE minimizes: the negative of the best metric must have the lowest loss.
+            assert!(trials
+                .iter()
+                .all(|result| -best_score <= -result.score(objective)));
+        }
+    }
 
     #[test]
     fn validates_search_types_and_constraints() {
@@ -345,7 +415,10 @@ mod tests {
 
     #[test]
     fn algorithm_ranges_override_shared_defaults_and_exclude_unused_axes() {
-        let mut config = AppConfig::try_new("configs/hpo.toml".into()).unwrap();
+        let path = std::env::temp_dir().join(format!("serenade-range-test-{}.toml", std::process::id()));
+        std::fs::write(&path, "[hyperparam]\ntraining_data_path = \"train.tsv\"\n[hyperparam.algorithms.stan]\nenabled = true\n").unwrap();
+        let mut config = AppConfig::try_new(path.to_string_lossy().into_owned()).unwrap();
+        std::fs::remove_file(path).unwrap();
         assert!(config.hyperparam.multi_algorithm);
         assert!(config.hyperparam.algorithms.values().all(|a| a.enabled));
         config
@@ -399,7 +472,7 @@ mod tests {
                 m_most_recent_sessions: 200,
                 neighborhood_size_k: 40,
                 max_items_in_session: 5,
-                num_items_to_recommend: 20,
+                num_items_to_recommend: 37,
                 idf_weighting: 0.75,
             };
             std::fs::write(&path, format!("[data]\ntraining_data_path = \"train.tsv\"\n[logic]\nenable_business_logic = true\n{}", model_snippet(&model))).unwrap();

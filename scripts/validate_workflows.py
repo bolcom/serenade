@@ -13,11 +13,10 @@ if __name__ == "__main__":
         for binary in BINS:
             shutil.copy2(ROOT / "target/release" / (binary + suffix), root)
         (root / "configs").mkdir()
-        shutil.copy2(ROOT / "configs/hpo.toml", root / "configs/hpo.toml")
         data = root / "assets/example"
         data.mkdir(parents=True)
-        shutil.copy2(ROOT / "assets/example/workflows.toml", data)
         with zipfile.ZipFile(ROOT / "assets/example/example.zip") as archive:
+            (root / "configs/hpo.toml").write_bytes(archive.read("hpo.toml"))
             for name in ("train.txt", "test.txt", "valid.txt"):
                 (data / name).write_bytes(archive.read(name))
         smoke(root, iterations=50)

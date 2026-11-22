@@ -24,11 +24,14 @@ def smoke(root, iterations=3):
         subprocess.run([str(root / (name + suffix)), *args], cwd=root,
                        check=True, timeout=120)
     algorithms = ["vmis", "sknn", "vsknn", "stan", "vsknn_stan"]
-    config = "assets/example/workflows.toml"
+    config = "configs/hpo.toml"
     run("evaluator", config, "vmis", "evaluation.json")
     result = json.loads((root / "evaluation.json").read_text())["results"][0]
     assert result["predictions"] > 0 and result["mrr_at_20"] > 0, result
-    legacy = (root / config).read_text().replace('algorithm = "vmis"\n', '')
+    import re
+    legacy = re.sub(r"(?ms)^\[hyperparam\.algorithms\.[^\]]+\]\n.*?(?=^\[|\Z)", "", (root / config).read_text())
+    legacy = legacy.replace('algorithm = "vmis"\n', '').replace('num_trials = 50', 'num_trials = 3')
+    legacy = legacy.replace('output_dir = "hpo-results"\n', '')
     (root / "legacy.toml").write_text(legacy)
     run("evaluator", "legacy.toml")
     legacy_result = json.loads((root / "evaluation-results.json").read_text())["results"][0]
@@ -139,13 +142,17 @@ def main():
             shutil.copy2(source, staging / source.name)
         data = staging / "assets/example"
         data.mkdir(parents=True)
-        shutil.copy2(ROOT / "assets/example/workflows.toml", data)
         (staging / "configs").mkdir()
-        shutil.copy2(ROOT / "configs/hpo.toml", staging / "configs/hpo.toml")
         with zipfile.ZipFile(ROOT / "assets/example/example.zip") as example:
+            (staging / "configs/hpo.toml").write_bytes(example.read("hpo.toml"))
             for filename in ("train.txt", "test.txt", "valid.txt"):
                 (data / filename).write_bytes(example.read(filename))
         shutil.copy2(ROOT / "docs/BINARIES.md", staging / "README.md")
+        for guide in ("CONFIG.md", "Preparation.md"):
+            (staging / guide).write_text(
+                (ROOT / "docs" / guide).read_text(encoding="utf-8-sig").replace("(BINARIES.md)", "(README.md)"),
+                encoding="utf-8",
+            )
         shutil.copy2(ROOT / "LICENSE.md", staging / "LICENSE.md")
         expected = {p.relative_to(staging).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                     for p in staging.rglob("*") if p.is_file()}

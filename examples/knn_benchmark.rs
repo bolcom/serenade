@@ -1,4 +1,4 @@
-//! Reproducible single-thread benchmark. See docs/knn-benchmark.md.
+//! Reproducible single-thread benchmark.
 use serenade::metrics::evaluation_reporter::EvaluationReporter;
 use serenade::vmisknn::{algorithms::KnnConfig, vmis_index::VMISIndex};
 use serenade::{io, vmisknn};
