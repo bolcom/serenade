@@ -45,7 +45,7 @@ The extension includes SKNN, VS-KNN, STAN, and VSKNN-STAN:
 Serenade provides a complete workflow for developing, evaluating, and serving session-based nearest-neighbor recommendation models:
 
 - **Scalable recommendation algorithms:** Five kNN approaches using the shared VMIS indexing and candidate retrieval approach.
-- **Automated hyperparameter optimization:** Tree-structured Parzen Estimator (TPE) optimization across selected algorithms, with configurable objectives such as `mrr@20`, `ndcg@8`, and `hitrate@10`.
+- **Automated hyperparameter optimization:** [Tree-structured Parzen Estimator (TPE) optimization](https://proceedings.mlr.press/v28/bergstra13.pdf) across selected algorithms, with configurable objectives such as `mrr@20`, `ndcg@8`, and `hitrate@10`.
 - **Offline evaluation:** Evaluate optimized models on held-out data using ranking and recommendation quality metrics.
 - **Low-latency serving:** An HTTP recommendation service with session management backed by RocksDB.
 - **Ready-to-run binaries:** Windows, Linux, and macOS executables, without requiring Rust or a local build environment.
