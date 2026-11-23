@@ -57,3 +57,9 @@ Run from a writable directory: HPO and evaluation write reports, and serving cre
 ## Example archive in the source repository
 
 `assets/example` contains only `example.zip`, with `hpo.toml`, `train.txt`, `valid.txt`, and `test.txt`. Binary packages already include these extracted files. For a source checkout, extract the three datasets into `assets/example`, place the archived `hpo.toml` at `configs/hpo.toml`, and run commands from the repository root. This ZIP is the single source of the example configuration; packaging installs it at `configs/hpo.toml`. The archived configuration uses port **8081** and paths relative to that root.
+
+## Publishing a new version
+
+Increase the package version in `Cargo.toml` and the Serenade entry in `Cargo.lock`, then merge the pull request into `main`. The Binary release workflow compares the version before and after the push. A higher stable `major.minor.patch` version triggers tests and builds for all four platforms, followed by automatic creation of the version tag and GitHub Release with archives and checksums. No manual tag or release is needed. Unchanged or lower versions skip the builds on `main`.
+
+Release branches (`release/**`) still run validation builds without publishing. Tag pushes and manual workflow runs remain available for retries. If a build fails, rerun the failed workflow jobs. If publication fails after creating a draft, inspect and remove the incomplete draft before rerunning; existing releases are never overwritten.
