@@ -64,9 +64,7 @@ fn recommend(data: &SharedHandlesAndConfig, query: V1QueryParams) -> Vec<u64> {
         });
         if session_items.is_empty() {
             session_items.push(most_recent_item);
-        } else if data.knn.algorithm != vmisknn::algorithms::Algorithm::Vmis
-            || session_items.last().unwrap() != &most_recent_item
-        {
+        } else if session_items.last().unwrap() != &most_recent_item {
             session_items.push(most_recent_item);
             if session_items.len() > max_items_in_session {
                 // Reduce the amount of session_items to max_items_in_session.
