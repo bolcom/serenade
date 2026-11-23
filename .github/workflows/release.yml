@@ -11,7 +11,7 @@ on:
         type: string
         required: false
   push:
-    branches: ['release/**']
+    branches: ['main', 'release/**']
     tags: ['v*.*.*']
 permissions:
   contents: read
@@ -25,23 +25,40 @@ jobs:
       ref: ${{ steps.resolve.outputs.ref }}
       version: ${{ steps.resolve.outputs.version }}
       publish: ${{ steps.resolve.outputs.publish }}
+      build: ${{ steps.resolve.outputs.build }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Test release version detection
+        run: python -m unittest discover -s scripts -p test_release_version.py
       - name: Resolve release tag and immutable build commit
         id: resolve
         env:
           MANUAL_PUBLISH: ${{ inputs.publish }}
           REQUESTED_TAG: ${{ inputs.release_tag }}
+          BEFORE_SHA: ${{ github.event.before }}
         shell: bash
         run: |
           set -euo pipefail
           publish=false
           tag=''
+          build=true
+          automatic=false
           if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/tags/* ]]; then
             publish=true
             tag="$GITHUB_REF_NAME"
+          elif [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]; then
+            tag=$(python scripts/release_version.py "$BEFORE_SHA" "$GITHUB_SHA")
+            if [[ -n "$tag" ]]; then
+              publish=true
+              automatic=true
+            else
+              build=false
+            fi
           elif [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$MANUAL_PUBLISH" == true ]]; then
             publish=true
             tag="$REQUESTED_TAG"
@@ -56,13 +73,24 @@ jobs:
               echo 'Publishing requires an existing tag such as v0.3.3.' >&2
               exit 1
             fi
-            ref=$(git rev-parse --verify "refs/tags/$tag^{commit}")
+            if [[ "$automatic" != true ]]; then
+              ref=$(git rev-parse --verify "refs/tags/$tag^{commit}")
+            fi
+            if git show-ref --verify --quiet "refs/tags/$tag"; then
+              tagged_ref=$(git rev-parse "refs/tags/$tag^{commit}")
+              if [[ "$tagged_ref" != "$ref" ]]; then
+                echo "Tag $tag already points to a different commit." >&2
+                exit 1
+              fi
+            fi
             version="$tag"
           fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
   build:
+    if: needs.prepare.outputs.build == 'true'
     needs: prepare
     strategy:
       fail-fast: false
@@ -145,6 +173,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.prepare.outputs.version }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.ref }}
         shell: bash
         run: |
           set -euo pipefail
@@ -162,6 +191,6 @@ jobs:
             echo 'Release already exists; inspect it and explicitly remove an incomplete draft before retrying.' >&2
             exit 1
           fi
-          gh release create "$TAG" --verify-tag --draft --title "Serenade $TAG" --generate-notes
+          gh release create "$TAG" --target "$RELEASE_SHA" --draft --title "Serenade $TAG" --generate-notes
           gh release upload "$TAG" dist/*
           gh release edit "$TAG" --draft=false
