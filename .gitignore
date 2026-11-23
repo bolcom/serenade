@@ -1,4 +1,3 @@
-Cargo.lock
 *.aux
 *.blg
 *.bbl
@@ -25,5 +24,18 @@ sessions.db/
 indices/
 dataset*
 *.csv
-assets/example/
+assets/example/*
+!assets/example/example.zip
 Serenade-*.tar.gz
+
+# Local copies of the pinned upstream Python scoring references.
+/tests/reference/*.py
+/.baseline/
+
+!/tests/reference/generate.py
+
+/evaluation-results.json
+/hpo-results/
+
+# Binary release packages.
+/dist/

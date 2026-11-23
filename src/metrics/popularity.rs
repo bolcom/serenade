@@ -1,8 +1,8 @@
 use crate::io::{ItemId, Time, TrainingSessionId};
 use crate::metrics::SessionMetric;
 
-use itertools::Itertools;
 use itertools::__std_iter::FromIterator;
+use itertools::Itertools;
 use std::cmp;
 use std::collections::{HashMap, HashSet};
 
@@ -18,10 +18,14 @@ impl Popularity {}
 
 impl Popularity {
     pub fn new(training_df: &[(TrainingSessionId, ItemId, Time)], length: usize) -> Popularity {
-        let mut popularity_scores = HashMap::with_capacity(training_df.len());
+        Self::from_items(training_df.iter().map(|row| row.1), length)
+    }
+
+    pub fn from_items(items: impl Iterator<Item = u64>, length: usize) -> Self {
+        let mut popularity_scores = HashMap::new();
         let mut max_frequency = 0;
-        for (_session_id, item_id, _time) in training_df.iter() {
-            let counter = popularity_scores.entry(*item_id).or_insert(0);
+        for item_id in items {
+            let counter = popularity_scores.entry(item_id).or_insert(0);
             *counter += 1;
             max_frequency = cmp::max(*counter, max_frequency);
         }
@@ -49,7 +53,9 @@ impl SessionMetric for Popularity {
         if !items.is_empty() {
             let mut sum = 0_f64;
             for item in items.iter() {
-                if let Some(item_freq) = self.popularity_scores.get(item) { sum += *item_freq as f64 / self.max_frequency as f64 }
+                if let Some(item_freq) = self.popularity_scores.get(item) {
+                    sum += *item_freq as f64 / self.max_frequency as f64
+                }
             }
             self.sum_of_scores += sum / items.len() as f64;
         }

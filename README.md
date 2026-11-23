@@ -1,235 +1,215 @@
-# [Serenade: Low-Latency Session-Based Recommendations](https://github.com/bolcom/serenade)
+# Serenade — Scalable Session-Based Recommendations
 
 [![Crates.io](https://img.shields.io/crates/v/serenade?style=flat-square)](https://crates.io/crates/serenade)
 [![Crates.io](https://img.shields.io/crates/d/serenade?style=flat-square)](https://crates.io/crates/serenade)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](https://github.com/bolcom/serenade/LICENSE.md)
-[![Build Status](https://img.shields.io/github/workflow/status/bolcom/serenade/Release/v0.2.6?style=flat-square)](https://github.com/bolcom/serenade/actions/workflows/release.yml?query=branch%3Av0.2.6)
+[![Build Status](https://github.com/bkersbergen/serenade/actions/workflows/release.yml/badge.svg)](https://github.com/bkersbergen/serenade/actions/workflows/release.yml)
 [![API Docs](https://docs.rs/serenade/badge.svg)](https://docs.rs/serenade)
 [![Contributors](https://img.shields.io/github/contributors/bolcom/serenade?style=flat-square)](https://github.com/bolcom/serenade/graphs/contributors)
 
 [<img src="https://raw.githubusercontent.com/bolcom/serenade/main/docs/airlab.png" width="250" align="right">](https://icai.ai/airlab/)
 [<img src="https://raw.githubusercontent.com/bolcom/serenade/main/docs/uva.png" width="250" align="right">](https://irlab.science.uva.nl/)
-This repository contains the official code for session-based recommender system Serenade, which employs VMIS-kNN.
-It learns users' preferences by capturing the short-term and sequential patterns from the evolution of user behaviors and predicts interesting next items with low latency with support for millions of distinct items.
-VMIS-kNN is an index-based variant of a state-of-the-art nearest neighbor algorithm to session-based recommendation, which scales to use cases with hundreds of millions of clicks to search through.
 
-The VMIS-kNN implementation has a p90 prediction latency of <1.7ms in our micro benchmarks on private and public trainingsets up to 60M user-item interactions with 1.76 million distinct items. 
-The Serenade recommender service using the VMIS-kNN algorithm easily handles 1000 predictions per second using only two vCPU's in total. The p90 prediction latency of the deployed system with kubernetes is < 7ms end-to-end, measured from a different node using a http client, including http overhead, network traffic, istio loadbalancers, fetching session information from RocksDb and filtering for product availablity and intimacy, the serializing of the results etc. Training data is 2.3 billion records of which 582 million training records are used after index pruning and contains about 6.5 million distinct products. The index requires about 11GB of memory per serving node.
+Serenade is an open-source, high-performance session-based recommendation system developed through academic research in collaboration between **[bol.com](https://www.bol.com/) and the [University of Amsterdam (AIRLab)](https://icai.ai/airlab/)**. The system was introduced in our [**SIGMOD 2022 paper, *Serenade: Low-Latency Session-Based Recommendation in e-Commerce at Scale***](https://doi.org/10.1145/3514221.3517901).
 
-# Quick guide: getting started with Serenade.
+The research introduces two complementary contributions:
 
-## Table of contents
-1. [Downloads](#downloads)
-2. [Find the best hyperparameter values](#find-hyperparams)
-3. [Configure Serenade to use the hyperparameter values](#update-config)
-4. [Start the Serenade service](#start-service)
-5. [Retrieve recommendations using python](#retrieve-recommendations)
-6. [Evaluate the testset](#evaluator)
-7. [Using your own train- and testset](#dataset)
-8. [Citation](#citation)
-9. [Join us](#join-us)
-10. [License](#license)
+VMIS-kNN — Scalable recommendation algorithm. An efficient adaptation of the state-of-the-art VS-KNN algorithm. VMIS-kNN introduces specialized indexing data structures and an optimized neighbor retrieval algorithm using bounded candidate selection and early stopping. With fixed retrieval parameters, the computational complexity of candidate retrieval depends on the length of the evolving session rather than the size of the historical training corpus, enabling low-latency recommendations across billions of interactions.
 
+Serenade — Production recommendation system. A scalable, stateful recommendation service built around VMIS-kNN, combining real-time session management, low-latency recommendation serving, and efficient resource utilization. Originally deployed at bol.com, Serenade demonstrates that high-quality session-based nearest-neighbor recommendations can operate at industrial scale with low latency and modest computational resources.
 
-### Downloads <a name="downloads"></a>
-Serenade can be downloaded [here](https://github.com/bolcom/serenade/releases). Binary executables are available for Windows, Linux and MacOS.
-Download the [toy example project](https://github.com/bolcom/serenade/raw/main/assets/example/example.zip) which contains toy datasets and a preconfigured configuration file.
+## Performance at scale
 
-Extract both downloaded files in the same directoy. You now have the following files:
-```
-serving
-tpe_hyperparameter_optm
-evaluator
-train.txt
-test.txt
-valid.txt
-example.toml
-```
+Our research demonstrates that session-based nearest-neighbor methods can achieve **millisecond-level prediction latency at industrial scale**, even in large e-commerce environments.
 
-### Find the best hyperparameter values <a name="find-hyperparams"></a>
-The next step is finding the hyperparameters using the train and test-datasets.
-Serenade uses Tree-Structured Parzen Estimator (TPE) for finding the hyperparameters. TPE achieves low validation errors compared to Exhaustive Grid Search ([Bergstra et al](http://proceedings.mlr.press/v28/bergstra13.pdf)).
-The section `[hyperparam]` in the `example.toml` contains the ranges of hyperparameter values that will be explored.
+- **Under 1.7 ms p90 prediction latency** in microbenchmarks using datasets of up to 60 million interactions and 1.76 million distinct items.
+- **1,000 recommendations per second** served using just two vCPUs.
+- **Under 7 ms p90 end-to-end latency** in a Kubernetes production deployment, including network overhead, session retrieval from RocksDB, business-rule filtering, and response serialization.
+- **2.3 billion historical interactions** processed, with 582 million retained after index pruning, covering approximately 6.5 million distinct products.
+- **Approximately 11 GB of index memory** per serving instance at this production scale.
 
-* The hyperparameter search can be started using:
-```bash
-./tpe_hyperparameter_optm example.toml
-```
+These results demonstrate how carefully designed algorithms and data structures can make session-based nearest-neighbor recommendation practical at massive scale.
 
-The results will be printed out in the terminal, for example:
-```
-===============================================================
-===          HYPER PARAMETER OPTIMIZATION RESULTS          ====
-===============================================================
-MRR@20 for validation data: 0.3197
-MRR@20 for test data: 0.3401
-enabled business_logic for evaluation:false
-best hyperparameter values:
-n_most_recent_sessions:1502
-neighborhood_size_k:288
-idf_weighting:2
-last_items_in_session:4
-HPO done
-```
-and also in the output file defined in the config file, for example:
-```
-out_path = "results.csv"
-```
+*These performance figures originate from the original SIGMOD 2022 research and production deployment of VMIS-kNN. They do not represent benchmark results for all algorithms supported by the extended Serenade implementation.*
 
-### Configure Serenade to use the hyperparameter values <a name="update-config"></a>
-We now update the `[model]` values in configuration file `example.toml` to use the hyperparameter values and set the training_data_path with the location of the ```train.txt```.
-This is the content of the example configuration file with the new `[model]` paramer values.
-```
-config_type = "toml"
+## Extending Serenade with additional scalable kNN algorithms
 
-[server]
-host = "0.0.0.0"
-port = 8080
-num_workers = 4
+Building on the original VMIS-kNN research, **we extend Serenade with scalable adaptations of four established session-based kNN algorithms**, preserving their distinctive scoring methods while leveraging VMIS-kNN's efficient neighbor retrieval architecture.
 
-[log]
-level = "info" # not implemented
+| Algorithm | Paper | Publication |
+|---|---|---|
+| **SKNN** | [When Recurrent Neural Networks meet the Neighborhood for Session-Based Recommendation](https://doi.org/10.1145/3109859.3109872) | RecSys '17 |
+| **VS-KNN** | [Evaluation of session-based recommendation algorithms](https://doi.org/10.1007/s11257-018-9209-6) | UMUAI '18 |
+| **STAN** | [Sequence and Time Aware Neighborhood for Session-based Recommendations: STAN](https://doi.org/10.1145/3331184.3331322) | SIGIR '19 |
+| **VSKNN-STAN (VSTAN)** | [Empirical analysis of session-based recommendation algorithms: A comparison of neural and non-neural approaches](https://doi.org/10.1007/s11257-020-09277-1) | UMUAI '21 |
 
-[data]
-training_data_path="train.txt"
+**Our contribution is to make these established algorithms scalable by adapting their neighbor retrieval to VMIS-kNN's bounded, recency-ordered index and early-stopping strategy**, while preserving each algorithm's distinctive scoring method. With fixed retrieval limits, query-time neighbor retrieval scales with the length of the active session rather than the size of the historical session corpus, enabling these algorithms to benefit from VMIS-kNN's scalability.
 
-[model]
-m_most_recent_sessions = 1502
-neighborhood_size_k = 288
-max_items_in_session = 4
-num_items_to_recommend = 21
-idf_weighting = 1
+## What Serenade offers
 
-[logic]
-enable_business_logic = "false"
+Serenade provides a complete workflow for developing, evaluating, and serving session-based nearest-neighbor recommendation models:
 
+- **Scalable recommendation algorithms:** Five kNN approaches using the shared VMIS indexing and candidate retrieval approach.
+- **Automated hyperparameter optimization:** [Tree-structured Parzen Estimator (TPE) optimization](https://proceedings.mlr.press/v28/bergstra13.pdf) across selected algorithms, with configurable objectives such as `mrr@20`, `ndcg@8`, and `hitrate@10`.
+- **Offline evaluation:** Evaluate optimized models on held-out data using ranking and recommendation quality metrics.
+- **Low-latency serving:** An HTTP recommendation service with session management backed by RocksDB.
+- **Ready-to-run binaries:** Windows, Linux, and macOS executables, without requiring Rust or a local build environment.
+
+The intended workflow is straightforward:
+
+**TPE hyperparameter optimization → Offline evaluation → Real-time serving**
+
+Each optimized algorithm produces a single configuration file that can be used directly by both the evaluator and serving applications.
+
+## Quick start
+
+### 1. Download Serenade
+
+Download the appropriate package from [GitHub Releases](https://github.com/bkersbergen/serenade/releases).
+
+| Platform | Package |
+| --- | --- |
+| Windows (x86_64) | ZIP |
+| Linux (x86_64) | tar.gz |
+| macOS (Intel) | tar.gz |
+| macOS (Apple Silicon) | tar.gz |
+
+Extract the archive and open a terminal in the extracted directory.
+
+The package includes the three executables (`tpe_hyperparameter_optm`, `evaluator`, and `serving`), example configurations, and a small example dataset.
+
+### 2. Optimize hyperparameters
+
+Edit `configs/hpo.toml` to choose which algorithms to optimize, the search ranges, and the evaluation objective.
+
+For example:
+
+```toml
 [hyperparam]
-training_data_path = "train.txt"
-test_data_path = "test.txt"
-validation_data_path = "valid.txt"
-num_iterations = 15
-save_records = true
-out_path = "results.csv"
-enable_business_logic = false
-n_most_recent_sessions_range = [100, 2500]
-neighborhood_size_k_range = [50, 1500]
-last_items_in_session_range = [1, 20]
-idf_weighting_range = [0, 5]
+objective = "ndcg@8"
 ```
 
-### Start the Serenade service <a name="start-service"></a>
-Start the `serving` binary for your platform with the location of the configuration file as argument
+All five algorithms are enabled by default. Individual algorithms can be disabled in their configuration sections.
+
+Run TPE optimization:
+
 ```bash
-./serving example.toml
+./tpe_hyperparameter_optm configs/hpo.toml
 ```
 
+Serenade optimizes the enabled algorithms and generates a configuration containing the best hyperparameters for each algorithm, for example:
 
-You can open your webbrowser and goto http://localhost:8080/ you should see an internal page of Serenade.
+```text
+hpo-results/
+    vmis.toml
+    sknn.toml
+    vsknn.toml
+    stan.toml
+    vsknn_stan.toml
+```
 
-Serenade exposes [Prometheus metrics](http://localhost:8080/internal/prometheus) out-of-the-box for monitoring.
+### 3. Evaluate an optimized algorithm
 
-### Retrieve recommendations using python <a name="retrieve-recommendations"></a>
+Evaluate STAN using its generated configuration:
+
+```bash
+./evaluator hpo-results/stan.toml
+```
+
+The evaluator reports recommendation quality on the held-out test dataset.
+
+### 4. Serve recommendations
+
+Start the HTTP recommendation service using **the same configuration file**:
+
+```bash
+./serving hpo-results/stan.toml
+```
+
+Request recommendations:
+
+```bash
+curl "http://localhost:8081/v1/recommend?item_id=13598&session_id=example&user_consent=true"
+```
+
+Serenade returns a JSON array of recommended item IDs.
+
+On Windows, use the `.exe` applications with PowerShell, for example:
+
+```powershell
+.\tpe_hyperparameter_optm.exe configs/hpo.toml
+.\evaluator.exe hpo-results/stan.toml
+.\serving.exe hpo-results/stan.toml
+```
+
+Use `curl.exe` for the request in Windows PowerShell.
+
+The example paths are relative to the extracted package directory. The bundled `configs/hpo.toml` configures port **8081**, which is used throughout these examples. The serving port is configured in the generated TOML file.
+
+Open [http://localhost:8081/](http://localhost:8081/) in your browser to view Serenade's internal page while the service is running.
+
+Serenade exposes [Prometheus metrics](http://localhost:8081/internal/prometheus) out-of-the-box for monitoring.
+
+### 5. Retrieve recommendations using Python
+
+Install the `requests` package with `python -m pip install requests`, then run:
 
 ```python
 import requests
 from requests.exceptions import HTTPError
+
 try:
-    myurl = 'http://localhost:8080/v1/recommend'
+    myurl = 'http://localhost:8081/v1/recommend'
     params = dict(
         session_id='144',
         user_consent='true',
         item_id='13598',
     )
-    response = requests.get(url=myurl, params=params)
+    response = requests.get(url=myurl, params=params, timeout=10)
     response.raise_for_status()
-    # access json content
-    jsonResponse = response.json()
-    print(jsonResponse)
+    # Access JSON content.
+    json_response = response.json()
+    print(json_response)
 except HTTPError as http_err:
     print(f'HTTP error occurred: {http_err}')
 except Exception as err:
     print(f'Other error occurred: {err}')
 ```
-```
+
+Example response (the items and list length depend on the dataset, algorithm, configuration, and session history):
+
+```json
 [2835,10,12068,4313,3097,8028,3545,7812,17519,1164,17935,1277,13335,8655,14664,14556,6868,13509,9248,2498,11724]
 ```
-The returned json object is a list with recommended items.
 
+The returned JSON array is a list of recommended item IDs.
 
-### Evaluate the testset <a name="evaluator"></a>
-The `evaluator` application can be used to evaluate a test dataset. It reports on several metrics.
-* The evaluation can be started using:
-```bash
-./evaluator example.toml
+For more details, see [Binary packages](docs/BINARIES.md), [Configuration](docs/CONFIG.md), and [Data preparation](docs/Preparation.md).
+
+## Research and citation
+
+If you use Serenade in academic work, please cite the original research:
+
+**Barrie Kersbergen, Olivier Sprangers, and Sebastian Schelter.** *Serenade: Low-Latency Session-Based Recommendation in e-Commerce at Scale.* Proceedings of the 2022 International Conference on Management of Data (SIGMOD '22), pp. 150–159.
+
+[Read the paper](https://doi.org/10.1145/3514221.3517901)
+
+```bibtex
+@inproceedings{Kersbergen2022SerenadeScale,
+  author    = {Kersbergen, Barrie and Sprangers, Olivier and Schelter, Sebastian},
+  title     = {Serenade - Low-Latency Session-Based Recommendation in e-Commerce at Scale},
+  booktitle = {Proceedings of the 2022 International Conference on Management of Data},
+  year      = {2022},
+  pages     = {150--159},
+  publisher = {Association for Computing Machinery},
+  doi       = {10.1145/3514221.3517901}
+}
 ```
 
-```
-===============================================================
-===               START EVALUATING TEST FILE               ====
-===============================================================
-Mrr@20,Ndcg@20,HitRate@20,Popularity@20,Precision@20,Coverage@20,Recall@20,F1score@20
-0.3277,0.3553,0.6402,0.0499,0.0680,0.2765,0.4456,0.1180
-Qty test evaluations: 931
-Prediction latency
-p90 (microseconds): 66
-p95 (microseconds): 66
-p99.5 (microseconds): 66
-```
+## Contributing
 
+Contributions to Serenade are welcome, including improvements to recommendation algorithms, scalability, evaluation, and serving capabilities.
 
-### Using your own train- and testset <a name="dataset"></a>
-A train- and testset must be created from historical user-item click data, outside of Serenade. Each row in the training- or test set should contain an historical user-item interaction event with the following fields:
-* ```SessionId``` the ID of the session. Format: 64 bit Integer
-* ```ItemId``` the ID of the interacted item. Format: 64 bit Integer
-* ```Time``` the time when the user-item interaction occurred. In epoch seconds: 32 bit Floating point.
+## License
 
-The last 24 hours in the historical data can be used as test-set while the rest of the sessions can be used as the training-set and written as plain text using a ```'\t'``` as field separator.
-This is an example of a training data CSV file train.txt:
-```
-SessionId       ItemId  Time
-10036   14957   1592337718.0
-10036   14713   1592337765.0
-10036   2625    1592338184.0
-10037   7267    1591979344.0
-10037   13892   1591979380.0
-10037   7267    1591979504.0
-10037   3595    1591979784.0
-10038   6424    1591008704.0
-```
-
-
-# Citation  <a name="citation"></a>
-> [Serenade - Low-Latency Session-Based Recommendation in e-Commerce at Scale](https://ssc.io/pdf/modds003.pdf)
-
-    @inproceedings{Kersbergen2022SerenadeScale,
-        title = {{Serenade - Low-Latency Session-Based Recommendation in e-Commerce at Scale}},
-        year = {2022},
-        series = {SIGMOD '22}
-        author = {Kersbergen, Barrie and Sprangers, Olivier and Schelter, Sebastian},
-        booktitle = {Proceedings of the 2022 International Conference on Management of Data},
-        pages = {150–159},
-        numpages = {10},
-        location = {Philadelphia, PA, USA},
-        isbn = {9781450392495},
-        publisher = {Association for Computing Machinery},
-        address = {New York, NY, USA},
-        doi = {10.1145/3514221.3517901},
-    }
-
-# Join us <a name="join-us"></a>
-Anyone who interested in our project is welcome to join us. Let us build a wonderful open source community for this session-based recommender system!
-We are always looking for the developers that contribute core code (Rust and python) or specific algorithms to the Serenade Project.
-Example ideas for improvement are:
-add specific algorithms such as:
-* (STAN)[https://github.com/rn5l/session-rec/blob/master/algorithms/knn/stan.py] 
-* (V-STAN)[https://github.com/rn5l/session-rec/blob/master/algorithms/knn/vstan.py] 
-make hardcoded design choices configurable
-* let the user define the metric (MRR, Hitrate, NDCG etc) and its length for the evaluator.rs via the config file instead of hardcoded
-* improve the duration for the hyperparameter.rs for larger files. Right now it uses just one thread which takes 
-* let the user define the percentiles in the configuration file that should be printed when using the evaluator.rs
-and more!
-Please contact us.
-
-# License <a name="license"></a>
-This project is licensed under the terms of the [Apache 2.0 license](LICENSE.md).
-
+Serenade is licensed under the [Apache License 2.0](LICENSE.md).

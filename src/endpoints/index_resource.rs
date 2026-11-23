@@ -1,5 +1,3 @@
-extern crate sys_info;
-
 use actix_web::{get, web, HttpResponse};
 use chrono::Utc;
 
@@ -8,7 +6,7 @@ use web::Data;
 
 #[get("/internal")]
 pub async fn internal(config: Data<SharedHandlesAndConfig>) -> HttpResponse {
-    let mut html = "<html>serenade: realtime session based recommendations.<br />".to_string();
+    let mut html = "<html>Serenade: Low-Latency Session-Based Recommendations.<br />".to_string();
 
     let data_stats = &config.vmis_index.training_data_stats;
     html.push_str("<h3>Training data</h3>");

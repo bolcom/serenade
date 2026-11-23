@@ -1,35 +1,37 @@
-Preparation
-===
+﻿# Data preparation
 
-### Data format
+The binary package includes example training, validation, and test data. To use your own data, create three tab-separated text files with a header and these columns in this order:
 
-Serenade needs training data for generating recommendations and test data to evaluate the quality of your recommendations.
-It supports binary AVRO files and CSV text files as input. 
-If your data has less than 100 million records it is advised to use CSV files to get started with Serenade. A machine with 16GB of RAM memory is advised.
-
-A CSV file must be TAB (\t) separated and look something like this:
-```
-SessionId       ItemId  Time
-10036   14957   1592337718.0
-10036   14713   1592337765.0
-10036   2625    1592338184.0
-10037   7267    1591979344.0
-10037   13892   1591979380.0
-10037   7267    1591979504.0
+```text
+SessionId	ItemId	Time
+10036	14957	1592337718
+10036	14713	1592337765
+10037	7267	1592337800
 ```
 
-* **SessionId** A unique session identifier (unsigned 32 bit integers supported)
-* **ItemId** an identifier for a product or item that a visitor interacted with. (unsigned 64 bit integers supported)
-* **Time** epoch in seconds. (32 bit float and unsigned 32 bit integers supported)
+Use actual tab characters between columns.
 
+| Column | Value |
+| --- | --- |
+| `SessionId` | Nonnegative integer fitting an unsigned 32-bit integer |
+| `ItemId` | Nonnegative integer fitting an unsigned 64-bit integer |
+| `Time` | Finite, nonnegative Unix timestamp in seconds; fractional seconds accepted |
 
-Configure Application
----
+Historical timestamps are rounded to unsigned 32-bit seconds. Events are sorted within each session; equal timestamps preserve file order. Repeated clicks are supported.
 
-All application configuration parameters can be set with a single config file in TOML format. Some parameters (currently only `training_data_path` and `num_workers`) can alternatively be set via environment variables.
+Split complete sessions into training, validation, and test sets, preferably in chronological order. Keep each session in only one split. Training builds the historical index, validation selects hyperparameters, and test measures held-out recommendation quality. Holdout sessions are never added to the historical index.
 
-### Minimum Configuration
+Update the existing `[hyperparam]` section in `configs/hpo.toml`:
 
-The only parameter value that is required and has no default value to fall back on is `training_data_path`. The user must have a training data file, with appropriate data formatting (see above). Since this parameter can be set with an environment variable, the config file can be left out entirely. In this case, the default values specified in [CONFIG](CONFIG.md) are used for all remaining parameters.
+```toml
+[hyperparam]
+training_data_path = "data/train.txt"
+validation_data_path = "data/valid.txt"
+test_data_path = "data/test.txt"
+```
 
-See [CONFIG](CONFIG.md) for further configuration details.
+Keep the remaining HPO settings. Run commands from the extracted package directory, with paths relative to that directory, or use absolute paths. Generated model configurations retain the dataset paths for evaluation and serving.
+
+Use the tab-separated format to get started with all five algorithms. Allow enough RAM for the training index; requirements depend on catalog size, session history, and candidate budget.
+
+Next: [optimize, evaluate, and serve](BINARIES.md).

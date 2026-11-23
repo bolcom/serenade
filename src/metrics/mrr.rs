@@ -1,5 +1,4 @@
 use crate::metrics::SessionMetric;
-use itertools::Itertools;
 use std::cmp;
 
 pub struct Mrr {
@@ -23,13 +22,14 @@ impl Mrr {
 impl SessionMetric for Mrr {
     fn add(&mut self, recommendations: &[u64], next_items: &[u64]) {
         self.qty += 1;
-        let top_recos = recommendations
+        let mut top_recos = recommendations
             .iter()
-            .take(cmp::min(recommendations.len(), self.length))
-            .collect_vec();
+            .take(cmp::min(recommendations.len(), self.length));
         let next_item = next_items[0];
-        let index = top_recos.iter().position(|&&item_id| item_id == next_item);
-        if let Some(rank) = index { self.sum_of_scores += 1_f64 / (rank as f64 + 1_f64) }
+        let index = top_recos.position(|&item_id| item_id == next_item);
+        if let Some(rank) = index {
+            self.sum_of_scores += 1_f64 / (rank as f64 + 1_f64)
+        }
     }
 
     fn result(&self) -> f64 {

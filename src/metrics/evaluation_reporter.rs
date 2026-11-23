@@ -21,22 +21,33 @@ pub struct EvaluationReporter {
     f1: F1score,
 }
 
-impl EvaluationReporter {}
+impl EvaluationReporter {
+    pub fn scores(&self) -> [f64; 4] {
+        [
+            self.mrr.result(),
+            self.ndcg.result(),
+            self.hitrate.result(),
+            self.coverage.result(),
+        ]
+    }
+}
 
 impl EvaluationReporter {
     pub fn new(
         training_df: &[(TrainingSessionId, ItemId, Time)],
         length: usize,
     ) -> EvaluationReporter {
-        // If we define these metrics as mutable as we expect it to be,
-        // the compilation reports a warning that these variables dont need to be mutable.
+        Self::from_items(training_df.iter().map(|row| row.1), length)
+    }
+
+    pub fn from_items(items: impl Iterator<Item = u64> + Clone, length: usize) -> Self {
         let n = 0;
         let mrr = Mrr::new(length);
         let ndcg = Ndcg::new(length);
         let hitrate = HitRate::new(length);
-        let popularity = Popularity::new(training_df, length);
+        let popularity = Popularity::from_items(items.clone(), length);
         let precision = Precision::new(length);
-        let coverage = Coverage::new(training_df, length);
+        let coverage = Coverage::from_items(items, length);
         let recall = Recall::new(length);
         let f1 = F1score::new(length);
 

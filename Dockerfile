@@ -1,4 +1,4 @@
-FROM rust:slim-buster AS builder
+FROM rust:1.100-slim-bookworm AS builder
 
 WORKDIR /usr/src/serenade
 
@@ -9,13 +9,12 @@ RUN set -eux; \
         clang;
 
 COPY ./src src
-COPY ./benches benches
 COPY ./Cargo.* ./
 
 RUN rustup component add rustfmt
-RUN cargo build --release
+RUN cargo build --locked --release --bin serving
 
-FROM debian:bullseye-slim as runtime
+FROM debian:bookworm-slim AS runtime
 
 WORKDIR /app
 
