@@ -1,16 +1,69 @@
 name: Binary release
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a GitHub Release after all builds pass
+        type: boolean
+        default: false
+      release_tag:
+        description: Existing version tag to publish (for example v0.3.3)
+        type: string
+        required: false
   push:
     branches: ['release/**']
     tags: ['v*.*.*']
 permissions:
   contents: read
 concurrency:
-  group: binary-release-${{ github.ref }}
+  group: binary-release-${{ inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 jobs:
+  prepare:
+    runs-on: ubuntu-22.04
+    outputs:
+      ref: ${{ steps.resolve.outputs.ref }}
+      version: ${{ steps.resolve.outputs.version }}
+      publish: ${{ steps.resolve.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Resolve release tag and immutable build commit
+        id: resolve
+        env:
+          MANUAL_PUBLISH: ${{ inputs.publish }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          publish=false
+          tag=''
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/tags/* ]]; then
+            publish=true
+            tag="$GITHUB_REF_NAME"
+          elif [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$MANUAL_PUBLISH" == true ]]; then
+            publish=true
+            tag="$REQUESTED_TAG"
+          elif [[ -n "$REQUESTED_TAG" ]]; then
+            echo 'Select Publish a GitHub Release to use a release tag.' >&2
+            exit 1
+          fi
+          ref="$GITHUB_SHA"
+          version="validation-$GITHUB_SHA"
+          if [[ "$publish" == true ]]; then
+            if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo 'Publishing requires an existing tag such as v0.3.3.' >&2
+              exit 1
+            fi
+            ref=$(git rev-parse --verify "refs/tags/$tag^{commit}")
+            version="$tag"
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
   build:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -35,6 +88,8 @@ jobs:
       RUSTFLAGS: ${{ matrix.platform == 'windows-x86_64' && '-C target-feature=+crt-static' || '' }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
@@ -65,7 +120,7 @@ jobs:
         run: cargo +stable build --locked --release --target ${{ matrix.target }} --bin serving --bin evaluator --bin tpe_hyperparameter_optm
       - name: Package, extract, and exercise applications
         env:
-          PACKAGE_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('validation-{0}', github.sha) }}
+          PACKAGE_VERSION: ${{ needs.prepare.outputs.version }}
         run: python scripts/package_release.py --target ${{ matrix.target }} --platform ${{ matrix.platform }} --version ${{ env.PACKAGE_VERSION }}
       - uses: actions/upload-artifact@v7
         with:
@@ -74,8 +129,8 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   publish:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-    needs: build
+    if: needs.prepare.outputs.publish == 'true'
+    needs: [prepare, build]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -89,7 +144,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.prepare.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
