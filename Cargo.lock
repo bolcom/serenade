@@ -1739,7 +1739,7 @@ dependencies = [
 
 [[package]]
 name = "serenade"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "actix-web",
  "actix-web-prom",

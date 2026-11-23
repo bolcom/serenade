@@ -1,6 +1,6 @@
 # Using Serenade binaries
 
-Download your platform's archive from [GitHub Releases](https://github.com/bkersbergen/serenade/releases), extract it, and open a terminal in the extracted directory. Packages include `tpe_hyperparameter_optm`, `evaluator`, `serving`, example data, and configurations. No Rust installation is required.
+Download your platform's archive from [GitHub Releases](https://github.com/bolcom/serenade/releases), extract it, and open a terminal in the extracted directory. Packages include `tpe_hyperparameter_optm`, `evaluator`, `serving`, example data, and configurations. No Rust installation is required.
 
 ## Platform requirements
 
