@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/serenade?style=flat-square)](https://crates.io/crates/serenade)
 [![Crates.io](https://img.shields.io/crates/d/serenade?style=flat-square)](https://crates.io/crates/serenade)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](https://github.com/bolcom/serenade/LICENSE.md)
-[![Build Status](https://github.com/bkersbergen/serenade/actions/workflows/release.yml/badge.svg)](https://github.com/bkersbergen/serenade/actions/workflows/release.yml)
+[![Build Status](https://github.com/bolcom/serenade/actions/workflows/release.yml/badge.svg)](https://github.com/bolcom/serenade/actions/workflows/release.yml)
 [![API Docs](https://docs.rs/serenade/badge.svg)](https://docs.rs/serenade)
 [![Contributors](https://img.shields.io/github/contributors/bolcom/serenade?style=flat-square)](https://github.com/bolcom/serenade/graphs/contributors)
 
@@ -65,7 +65,7 @@ Each optimized algorithm produces a single configuration file that can be used d
 
 ### 1. Download Serenade
 
-Download the appropriate package from [GitHub Releases](https://github.com/bkersbergen/serenade/releases).
+Download the appropriate package from [GitHub Releases](https://github.com/bolcom/serenade/releases).
 
 | Platform | Package |
 | --- | --- |
