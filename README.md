@@ -34,11 +34,16 @@ These results demonstrate how carefully designed algorithms and data structures 
 
 ## Extending Serenade with additional scalable kNN algorithms
 
-Building on the original VMIS-kNN research, **we have adapted four additional established session-based kNN algorithms to benefit from VMIS's scalable indexing and efficient neighbor retrieval approach**.
+Building on the original VMIS-kNN research, **we extend Serenade with scalable adaptations of four established session-based kNN algorithms**, preserving their distinctive scoring methods while leveraging VMIS-kNN's efficient neighbor retrieval architecture.
 
-The extension includes SKNN, VS-KNN, STAN, and VSKNN-STAN:
+| Algorithm | Paper | Publication |
+|---|---|---|
+| **SKNN** | [When Recurrent Neural Networks meet the Neighborhood for Session-Based Recommendation](https://doi.org/10.1145/3109859.3109872) | RecSys '17 |
+| **VS-KNN** | [Evaluation of session-based recommendation algorithms](https://doi.org/10.1007/s11257-018-9209-6) | UMUAI '18 |
+| **STAN** | [Sequence and Time Aware Neighborhood for Session-based Recommendations: STAN](https://doi.org/10.1145/3331184.3331322) | SIGIR '19 |
+| **VSKNN-STAN (VSTAN)** | [Empirical analysis of session-based recommendation algorithms: A comparison of neural and non-neural approaches](https://doi.org/10.1007/s11257-020-09277-1) | UMUAI '21 |
 
-**We adapt their neighbor retrieval to VMIS's bounded, recency-ordered index and early-stopping strategy**, while preserving their distinctive scoring methods. With fixed retrieval limits, candidate retrieval scales with the length of the evolving session rather than the size of the training corpus, enabling these kNN algorithms to benefit from VMIS's scalability.
+**Our contribution is to make these established algorithms scalable by adapting their neighbor retrieval to VMIS-kNN's bounded, recency-ordered index and early-stopping strategy**, while preserving each algorithm's distinctive scoring method. With fixed retrieval limits, query-time neighbor retrieval scales with the length of the active session rather than the size of the historical session corpus, enabling these algorithms to benefit from VMIS-kNN's scalability.
 
 ## What Serenade offers
 
