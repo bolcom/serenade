@@ -1,4 +1,5 @@
 //! Shared offline prediction points, metrics and algorithm selection.
+pub mod execution;
 use crate::{
     config::ModelConfig,
     io,
@@ -16,6 +17,12 @@ pub struct EvaluationData {
     sessions: Vec<Vec<(u64, f64)>>,
 }
 impl EvaluationData {
+    pub fn prediction_count(&self) -> usize {
+        self.sessions
+            .iter()
+            .map(|s| s.len().saturating_sub(1))
+            .sum()
+    }
     pub fn load(path: &str) -> anyhow::Result<Self> {
         let mut sessions: Vec<_> = io::try_read_test_data_timed(path)?.into_iter().collect();
         sessions.sort_by_key(|(id, _)| *id);

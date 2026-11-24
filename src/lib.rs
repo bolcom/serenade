@@ -13,3 +13,5 @@ pub mod vmisknn;
 pub mod executor;
 
 pub mod offline;
+
+pub mod paths;

@@ -18,21 +18,30 @@ VMIS-kNN — Scalable recommendation algorithm. An efficient adaptation of the s
 
 Serenade — Production recommendation system. A scalable, stateful recommendation service built around VMIS-kNN, combining real-time session management, low-latency recommendation serving, and efficient resource utilization. Originally deployed at bol.com, Serenade demonstrates that high-quality session-based nearest-neighbor recommendations can operate at industrial scale with low latency and modest computational resources.
 
-## Running the kNN benchmarks
+## Optimize, evaluate, serve
+
+Download and extract a [release](https://github.com/bolcom/serenade/releases).
+Windows packages contain `.exe` files; Linux and macOS use the same names without
+`.exe` (prefix commands with `./`). The spelling `tpe_hyperparameter_optm` is intentional.
+
+**1. Optimize**
 
 ```powershell
-cargo run --release --example knn_benchmark -- target/scaled-local-100x-10x-items/train.tsv target/scaled-local-100x-10x-items/valid.tsv all --iterations 3 --warmup 1 --raw target/knn-benchmark/iterations.csv --snapshot-dir target/knn-benchmark/snapshots
+.\tpe_hyperparameter_optm.exe --config workspace/hpo.toml
 ```
 
-Use actual training and validation paths. All seven algorithms write one consolidated
-CSV to `target/knn-benchmark/results.csv`, with a companion metadata JSON file.
-Timings report medians and ranges across independent measured iterations; warm-ups
-are excluded. Progress goes to stderr (`--quiet` suppresses it).
+**2. Evaluate and optionally benchmark**
 
-See [benchmark documentation](docs/knn-benchmark.md) for options, multiple datasets,
-measurement boundaries, quality definitions, memory estimates and synthetic scaling.
-The `prediction_benchmark` example measures VMIS throughput and executor performance,
-with `BENCH_SAMPLE_CAPACITY` samples preallocated per worker.
+```powershell
+.\evaluator.exe --model workspace/best-vmis.toml --model workspace/best-sknn.toml --model workspace/best-ssknn.toml --model workspace/best-wsknn.toml --model workspace/best-vsknn.toml --model workspace/best-stan.toml --model workspace/best-vsknn_stan.toml --benchmark
+```
+
+**3. Serve**
+
+```powershell
+.\serving.exe --model workspace/best-vmis.toml --config workspace/serenade.toml
+```
+See [configuration details](docs/CONFIG.md) and [data preparation](docs/Preparation.md).
 
 ## Performance at scale
 
@@ -77,100 +86,21 @@ Serenade provides a complete workflow for developing, evaluating, and serving se
 
 The intended workflow is straightforward:
 
-**TPE hyperparameter optimization → Offline evaluation → Real-time serving**
+**TPE hyperparameter optimization → Offline evaluation (with optional benchmarking) → Real-time serving**
 
 Each optimized algorithm produces a single configuration file that can be used directly by both the evaluator and serving applications.
 
-## Quick start
+## Request recommendations
 
-### 1. Download Serenade
+After starting serving:
 
-Download the appropriate package from [GitHub Releases](https://github.com/bolcom/serenade/releases).
-
-| Platform | Package |
-| --- | --- |
-| Windows (x86_64) | ZIP |
-| Linux (x86_64) | tar.gz |
-| macOS (Intel) | tar.gz |
-| macOS (Apple Silicon) | tar.gz |
-
-Extract the archive and open a terminal in the extracted directory.
-
-The package includes the three executables (`tpe_hyperparameter_optm`, `evaluator`, and `serving`), example configurations, and a small example dataset.
-
-### 2. Optimize hyperparameters
-
-Edit `configs/hpo.toml` to choose which algorithms to optimize, the search ranges, and the evaluation objective.
-
-For example:
-
-```toml
-[hyperparam]
-objective = "ndcg@8"
-```
-
-All seven algorithms are enabled by default. Individual algorithms can be disabled in their configuration sections.
-
-Run TPE optimization:
-
-```bash
-./tpe_hyperparameter_optm configs/hpo.toml
-```
-
-Serenade optimizes the enabled algorithms and generates a configuration containing the best hyperparameters for each algorithm, for example:
-
-```text
-hpo-results/
-    vmis.toml
-    sknn.toml
-    ssknn.toml
-    wsknn.toml
-    vsknn.toml
-    stan.toml
-    vsknn_stan.toml
-```
-
-### 3. Evaluate an optimized algorithm
-
-Evaluate STAN using its generated configuration:
-
-```bash
-./evaluator hpo-results/stan.toml
-```
-
-The evaluator reports recommendation quality on the held-out test dataset.
-
-### 4. Serve recommendations
-
-Start the HTTP recommendation service using **the same configuration file**:
-
-```bash
-./serving hpo-results/stan.toml
-```
-
-Request recommendations:
-
-```bash
+```sh
 curl "http://localhost:8081/v1/recommend?item_id=13598&session_id=example&user_consent=true"
 ```
 
-Serenade returns a JSON array of recommended item IDs.
-
-On Windows, use the `.exe` applications with PowerShell, for example:
-
-```powershell
-.\tpe_hyperparameter_optm.exe configs/hpo.toml
-.\evaluator.exe hpo-results/stan.toml
-.\serving.exe hpo-results/stan.toml
-```
-
-Use `curl.exe` for the request in Windows PowerShell.
-
-The example paths are relative to the extracted package directory. The bundled `configs/hpo.toml` configures port **8081**, which is used throughout these examples. The serving port is configured in the generated TOML file.
-
-Open [http://localhost:8081/](http://localhost:8081/) in your browser to view Serenade's internal page while the service is running.
-
-Serenade exposes [Prometheus metrics](http://localhost:8081/internal/prometheus) out-of-the-box for monitoring.
+Use `curl.exe` in Windows PowerShell. The [internal page](http://localhost:8081/)
+and [Prometheus metrics](http://localhost:8081/internal/prometheus) are available
+while serving runs.
 
 ### 5. Retrieve recommendations using Python
 
@@ -207,6 +137,37 @@ Example response (the items and list length depend on the dataset, algorithm, co
 The returned JSON array is a list of recommended item IDs.
 
 For more details, see [Binary packages](docs/BINARIES.md), [Configuration](docs/CONFIG.md), and [Data preparation](docs/Preparation.md).
+
+## Index export and external predictions
+
+The standard `cargo build --release` builds exactly `tpe_hyperparameter_optm`,
+`evaluator`, and `serving`. Binary targets are declared explicitly in `Cargo.toml`;
+automatic discovery in `src/bin/` is disabled.
+
+To construct and persist an index without starting the server:
+
+```sh
+serving --model workspace/best-vmis.toml --config workspace/serenade.toml --build-index index.vmis --training-statistics training-stats.bin
+```
+
+`--training-statistics` is optional and exports raw corpus aggregates for legacy
+Avro indexes. This mode uses the configured index capacity and exits before opening
+the session database or HTTP listener. Load the snapshot with `serving --model
+workspace/best-vmis.toml --config workspace/serenade.toml --index index.vmis`.
+Evaluator benchmark snapshots remain available through `--snapshot-dir`.
+
+To score predictions produced by another model:
+
+```sh
+evaluator --train workspace/train.txt --predictions predictions.txt
+```
+
+Each line contains comma-separated recommendation IDs, a semicolon, then
+comma-separated next-item IDs: `10,20,30;20,40`. Empty recommendation lists and
+trailing commas are accepted; next-item lists must contain at least one ID.
+This mode prints the evaluation count and all eight metrics at 20 as CSV to stdout.
+Malformed prediction rows fail with the filename and line number.
+These commands replace the former `build_index` and `evaluate_file` executables.
 
 ## Research and citation
 

@@ -22,6 +22,31 @@ pub struct EvaluationReporter {
 }
 
 impl EvaluationReporter {
+    pub fn empty(&self, cutoff: usize) -> Self {
+        Self {
+            n: 0,
+            mrr: Mrr::new(cutoff),
+            ndcg: Ndcg::new(cutoff),
+            hitrate: HitRate::new(cutoff),
+            popularity: self.popularity.empty(),
+            precision: Precision::new(cutoff),
+            coverage: self.coverage.empty(),
+            recall: Recall::new(cutoff),
+            f1: F1score::new(cutoff),
+        }
+    }
+    pub fn merge(&mut self, other: Self) {
+        self.n += other.n;
+        self.mrr.merge(other.mrr);
+        self.ndcg.merge(other.ndcg);
+        self.hitrate.merge(other.hitrate);
+        self.popularity.merge(other.popularity);
+        self.precision.merge(other.precision);
+        self.coverage.merge(other.coverage);
+        self.recall.merge(other.recall);
+        self.f1.merge(other.f1);
+    }
+
     /// Full-precision values in MRR, NDCG, hit rate, popularity, precision,
     /// coverage, recall, F1 order. Formatting is the caller's responsibility.
     pub fn all_scores(&self) -> [f64; 8] {

@@ -8,7 +8,12 @@ pub struct Recall {
     length: usize,
 }
 
-impl Recall {}
+impl Recall {
+    pub fn merge(&mut self, other: Self) {
+        self.sum_of_scores += other.sum_of_scores;
+        self.qty += other.qty;
+    }
+}
 
 impl Recall {
     /// Returns a Recall evaluation metric.

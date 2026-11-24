@@ -9,12 +9,26 @@ use std::collections::{HashMap, HashSet};
 pub struct Popularity {
     sum_of_scores: f64,
     qty: usize,
-    popularity_scores: HashMap<u64, i32>,
+    popularity_scores: std::sync::Arc<HashMap<u64, i32>>,
     length: usize,
     max_frequency: i32,
 }
 
-impl Popularity {}
+impl Popularity {
+    pub fn empty(&self) -> Self {
+        Self {
+            sum_of_scores: 0.,
+            qty: 0,
+            popularity_scores: self.popularity_scores.clone(),
+            length: self.length,
+            max_frequency: self.max_frequency,
+        }
+    }
+    pub fn merge(&mut self, other: Self) {
+        self.sum_of_scores += other.sum_of_scores;
+        self.qty += other.qty;
+    }
+}
 
 impl Popularity {
     pub fn new(training_df: &[(TrainingSessionId, ItemId, Time)], length: usize) -> Popularity {
@@ -33,7 +47,7 @@ impl Popularity {
         Popularity {
             sum_of_scores: 0.0,
             qty: 0,
-            popularity_scores,
+            popularity_scores: std::sync::Arc::new(popularity_scores),
             length,
             max_frequency,
         }

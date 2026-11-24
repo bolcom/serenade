@@ -61,3 +61,10 @@ mod mrr_test {
         assert_eq!("Mrr@20", mymetric.get_name());
     }
 }
+
+impl Mrr {
+    pub(crate) fn merge(&mut self, other: Self) {
+        self.sum_of_scores += other.sum_of_scores;
+        self.qty += other.qty;
+    }
+}

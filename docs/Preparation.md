@@ -21,16 +21,11 @@ Historical timestamps are rounded to unsigned 32-bit seconds. Events are sorted 
 
 Split complete sessions into training, validation, and test sets, preferably in chronological order. Keep each session in only one split. Training builds the historical index, validation selects hyperparameters, and test measures held-out recommendation quality. Holdout sessions are never added to the historical index.
 
-Update the existing `[hyperparam]` section in `configs/hpo.toml`:
-
-```toml
-[hyperparam]
-training_data_path = "data/train.txt"
-validation_data_path = "data/valid.txt"
-test_data_path = "data/test.txt"
-```
-
-Keep the remaining HPO settings. Run commands from the extracted package directory, with paths relative to that directory, or use absolute paths. Generated model configurations retain the dataset paths for evaluation and serving.
+Place `train.txt`, `validation.txt`, and `test.txt` in the workspace directory,
+or leave large datasets on their current volume and use the explicit path overrides
+in [the workflow guide](BINARIES.md). HPO requires only training and validation;
+evaluation requires only training and test; serving requires only training or an index.
+Generated model files contain no dataset paths.
 
 Use the tab-separated format to get started with all seven algorithms. Allow enough RAM for the training index; requirements depend on catalog size, session history, and candidate budget.
 

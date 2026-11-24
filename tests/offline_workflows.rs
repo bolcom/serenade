@@ -28,10 +28,12 @@ fn reused_index_matches_fresh_indexes_and_keeps_holdout_separate() {
     std::fs::write(&training, events).unwrap();
     std::fs::write(
         &holdout,
-        "SessionId\tItemId\tTime\n1\t1\t200\n1\t999\t201\n",
+        "SessionId\tItemId\tTime\n1\t1\t200\n1\t999\t201\n2\t1\t200\n2\t3\t201\n2\t8\t202\n2\t1\t203\n",
     )
     .unwrap();
     let data = EvaluationData::load(holdout.to_str().unwrap()).unwrap();
+    let parallel = offline::execution::Execution::new(4).unwrap();
+    let sequential = offline::execution::Execution::new(1).unwrap();
     let mut shared = VMISIndex::new_from_csv(training.to_str().unwrap(), 30, 1.0);
     // Visit VMIS twice, restoring its original IDF after reference scoring.
     for algorithm in Algorithm::ALL.into_iter().chain([Algorithm::Vmis]) {
@@ -39,12 +41,13 @@ fn reused_index_matches_fresh_indexes_and_keeps_holdout_separate() {
         if algorithm == Algorithm::Vsknn {
             knn.idf_weighting = 1.75;
         }
-        for m in [3, 8, 20] {
+        for m in [1, 3, 8, 20] {
             shared.prepare_for_model(m, 0.75, &knn).unwrap();
             let fresh =
                 VMISIndex::load_for_model(training.to_str().unwrap(), m, 0.75, &knn).unwrap();
             let snapshot = directory.join("index.vmis");
             shared.save(snapshot.to_str().unwrap()).unwrap();
+            assert!(VMISIndex::load_corpus(snapshot.to_str().unwrap(), 31).is_err());
             let restored =
                 VMISIndex::load_for_model(snapshot.to_str().unwrap(), m, 0.75, &knn).unwrap();
             for current in [&[][..], &[999][..], &[1][..], &[1, 3][..], &[1, 2, 1][..]] {
@@ -73,10 +76,41 @@ fn reused_index_matches_fresh_indexes_and_keeps_holdout_separate() {
                 num_items_to_recommend: 20,
                 idf_weighting: 0.75,
             };
+            // Scoring views scale an existing unit IDF instead of rescanning it.
+            shared.prepare_for_model(30, 1.0, &knn).unwrap();
+            let before = directory.join("before.vmis");
+            shared.save(before.to_str().unwrap()).unwrap();
+            for text in ["mrr@1", "ndcg@8", "hitrate@20"] {
+                let objective: serenade::metrics::objective::Objective = text.parse().unwrap();
+                let expected = offline::evaluate_at_cutoff(
+                    &fresh,
+                    &data,
+                    &model,
+                    false,
+                    std::num::NonZeroUsize::new(objective.cutoff()).unwrap(),
+                )
+                .score(objective);
+                let one = sequential
+                    .run(&shared, &data, &model, false, objective)
+                    .unwrap();
+                let many = parallel
+                    .run(&shared, &data, &model, false, objective)
+                    .unwrap();
+                assert!(
+                    (one.objective - expected).abs() < 1e-12,
+                    "{algorithm:?} {text}"
+                );
+                assert!((many.objective - expected).abs() < 1e-12);
+                assert_eq!(many.predictions, 4);
+            }
+            let after = directory.join("after.vmis");
+            shared.save(after.to_str().unwrap()).unwrap();
+            assert_eq!(
+                std::fs::read(before).unwrap(),
+                std::fs::read(after).unwrap()
+            );
             let result = offline::evaluate(&shared, &data, &model, false);
-            assert_eq!(result.predictions, 1);
-            assert_eq!(result.mrr_at_20, 0.0);
-            assert_eq!(result.hitrate_at_20, 0.0);
+            assert_eq!(result.predictions, 4);
         }
     }
     std::fs::remove_dir_all(directory).unwrap();

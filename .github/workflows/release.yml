@@ -146,7 +146,7 @@ jobs:
       - name: Test
         run: cargo +stable test --locked --target ${{ matrix.target }}
       - name: Build applications
-        run: cargo +stable build --locked --release --target ${{ matrix.target }} --bin serving --bin evaluator --bin tpe_hyperparameter_optm
+        run: cargo +stable build --locked --release --target ${{ matrix.target }}
       - name: Package, extract, and exercise applications
         env:
           PACKAGE_VERSION: ${{ needs.prepare.outputs.version }}

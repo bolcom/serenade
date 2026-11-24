@@ -12,6 +12,17 @@ pub struct Coverage {
 }
 
 impl Coverage {
+    pub fn empty(&self) -> Self {
+        Self {
+            unique_training_items: self.unique_training_items,
+            test_items: HashSet::new(),
+            length: self.length,
+        }
+    }
+    pub fn merge(&mut self, other: Self) {
+        self.test_items.extend(other.test_items);
+    }
+
     pub fn new(training_df: &[(TrainingSessionId, ItemId, Time)], length: usize) -> Coverage {
         Self::from_items(training_df.iter().map(|row| row.1), length)
     }

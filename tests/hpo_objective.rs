@@ -1,7 +1,6 @@
 //! Small end-to-end runs check shared objectives, best-trial reporting and generated configs.
 use serde_json::Value;
 use serenade::{
-    config::AppConfig,
     metrics::objective::Objective,
     offline::{self, EvaluationData},
     vmisknn::vmis_index::VMISIndex,
@@ -100,16 +99,14 @@ fn all_algorithms_optimize_selected_metric_and_generate_usable_models() {
                     .collect();
             assert_eq!(&records, trials);
             // Both serving and evaluator use this same loader and model contract.
-            let model = AppConfig::try_new(
-                output
-                    .join(format!("{algorithm}.toml"))
-                    .to_string_lossy()
-                    .into_owned(),
-            )
-            .unwrap();
-            assert_eq!(model.hyperparam.objective, objective);
-            assert_eq!(model.model.num_items_to_recommend, 37);
-            let selected = serde_json::to_value(&model.model.knn).unwrap();
+            let model =
+                serenade::config::load_model(&output.join(format!("best-{algorithm}.toml")))
+                    .unwrap();
+            assert_eq!(model.num_items_to_recommend, 37);
+            for trial in trials {
+                assert_eq!(trial["validation_metrics"].as_object().unwrap().len(), 2);
+            }
+            let selected = serde_json::to_value(&model.knn).unwrap();
             for (name, choices) in result["optimization"]["choices"].as_object().unwrap() {
                 assert_eq!(selected[name], best["hyperparameters"][name]);
                 for trial in trials {
@@ -121,17 +118,17 @@ fn all_algorithms_optimize_selected_metric_and_generate_usable_models() {
             }
 
             let index = VMISIndex::load_for_model(
-                &model.data.training_data_path,
-                model.model.m_most_recent_sessions,
-                model.model.idf_weighting,
-                &model.model.knn,
+                train.to_str().unwrap(),
+                model.m_most_recent_sessions,
+                model.idf_weighting,
+                &model.knn,
             )
             .unwrap();
-            let validation = EvaluationData::load(&model.hyperparam.validation_data_path).unwrap();
+            let validation = EvaluationData::load(holdout.to_str().unwrap()).unwrap();
             let reproduced = offline::evaluate_at_cutoff(
                 &index,
                 &validation,
-                &model.model,
+                &model,
                 false,
                 std::num::NonZeroUsize::new(objective.cutoff()).unwrap(),
             );
@@ -140,15 +137,49 @@ fn all_algorithms_optimize_selected_metric_and_generate_usable_models() {
                 result["best_validation_score"].as_f64().unwrap()
             );
         }
-        run(Command::new(env!("CARGO_BIN_EXE_evaluator")).arg(&output));
+        let csv_path = output.join("evaluation.csv");
+        let mut evaluation = Command::new(env!("CARGO_BIN_EXE_evaluator"));
         for result in results {
-            let evaluation = json(output.join(format!(
-                "{}.evaluation.json",
+            evaluation.arg("--model").arg(output.join(format!(
+                "best-{}.toml",
                 result["algorithm"].as_str().unwrap()
             )));
-            assert_eq!(evaluation["cutoff"], 20);
-            assert!(evaluation["results"][0]["mrr_at_20"].is_number());
+        }
+        run(evaluation
+            .arg("--train")
+            .arg(&train)
+            .arg("--test")
+            .arg(&holdout)
+            .arg("--output")
+            .arg(&csv_path));
+        let mut reader = csv::Reader::from_path(csv_path).unwrap();
+        let header = reader.headers().unwrap().clone();
+        let rows: Vec<_> = reader.records().map(Result::unwrap).collect();
+        assert_eq!(rows.len(), results.len());
+        let column = header.iter().position(|h| h == "MRR@20").unwrap();
+        for row in rows {
+            assert!(row[column].parse::<f64>().unwrap().is_finite());
         }
     }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn rejects_search_above_fixed_capacity_before_loading_data() {
+    let root = std::env::temp_dir().join(format!("serenade-hpo-capacity-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let config = root.join("hpo.toml");
+    std::fs::write(&config, "[data]\nindex_capacity = 29\n[hyperparam]\ntraining_data_path = \"missing-training.tsv\"\nvalidation_data_path = \"missing-validation.tsv\"\nn_most_recent_sessions_range = [5, 30]\n").unwrap();
+    let result = Command::new(env!("CARGO_BIN_EXE_tpe_hyperparameter_optm"))
+        .arg(&config)
+        .output()
+        .unwrap();
+    assert!(!result.status.success());
+    let error = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        error.contains("exceeds fixed data.index_capacity 29"),
+        "{error}"
+    );
+    assert!(!root.join("hpo-results").exists());
     std::fs::remove_dir_all(root).unwrap();
 }

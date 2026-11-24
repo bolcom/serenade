@@ -1,7 +1,7 @@
 use rand::{rngs::StdRng, SeedableRng};
 use serde_json::json;
 use serenade::{
-    config::{AppConfig, ModelConfig},
+    config::{HpoConfig, HyperparamConfig, ModelConfig},
     offline::{self, EvaluationData},
     vmisknn::{algorithms::Algorithm, vmis_index::VMISIndex},
 };
@@ -45,8 +45,7 @@ struct Search {
     ranges: BTreeMap<String, (f64, f64)>,
 }
 
-fn axes(config: &AppConfig, algorithm: Algorithm) -> anyhow::Result<Search> {
-    let h = &config.hyperparam;
+fn axes(h: &HyperparamConfig, algorithm: Algorithm) -> anyhow::Result<Search> {
     let mut specs = vec![
         (
             "m_most_recent_sessions",
@@ -271,12 +270,70 @@ fn model_snippet(m: &ModelConfig) -> String {
     text
 }
 fn main() -> anyhow::Result<()> {
-    let args: Vec<_> = std::env::args().collect();
+    let mut args: Vec<_> = std::env::args().collect();
+    let modern = args.iter().skip(1).any(|a| a.starts_with("--"));
+    let mut overrides = BTreeMap::new();
+    if modern {
+        let mut parsed = vec![args[0].clone()];
+        let mut i = 1;
+        while i < args.len() {
+            let key = args[i].clone();
+            anyhow::ensure!(
+                [
+                    "--config",
+                    "--train",
+                    "--validation",
+                    "--output",
+                    "--algorithm",
+                    "--index-capacity"
+                ]
+                .contains(&key.as_str()),
+                "unknown option {}",
+                key
+            );
+            i += 1;
+            let value = args
+                .get(i)
+                .ok_or_else(|| anyhow::anyhow!("missing value for {}", key))?
+                .clone();
+            anyhow::ensure!(overrides.insert(key, value).is_none(), "duplicate option");
+            i += 1;
+        }
+        parsed.push(
+            overrides
+                .remove("--config")
+                .ok_or_else(|| anyhow::anyhow!("--config FILE is required"))?,
+        );
+        parsed.push(
+            overrides
+                .remove("--algorithm")
+                .unwrap_or_else(|| "all".into()),
+        );
+        args = parsed;
+    }
     anyhow::ensure!(
         (2..=4).contains(&args.len()),
-        "usage: tpe_hyperparameter_optm CONFIG [ALGORITHM|all] [OUTPUT_DIRECTORY]"
+        "usage: tpe_hyperparameter_optm --config FILE [--train FILE --validation FILE --output DIR --algorithm NAME --index-capacity N]"
     );
-    let config = AppConfig::try_new(args[1].clone())?;
+    let mut config = HpoConfig::load(Path::new(&args[1]))?;
+    for (key, value) in overrides {
+        match key.as_str() {
+            "--train" => {
+                config.hyperparam.training_data_path =
+                    serenade::paths::absolute(value)?.display().to_string()
+            }
+            "--validation" => {
+                config.hyperparam.validation_data_path =
+                    serenade::paths::absolute(value)?.display().to_string()
+            }
+            "--output" => {
+                config.hyperparam.output_dir =
+                    serenade::paths::absolute(value)?.display().to_string()
+            }
+            "--index-capacity" => config.data.index_capacity = value.parse()?,
+            _ => unreachable!(),
+        }
+    }
     anyhow::ensure!(
         config.hyperparam.num_trials > 0,
         "hyperparam.num_trials must be positive"
@@ -300,9 +357,15 @@ fn main() -> anyhow::Result<()> {
     anyhow::ensure!(!models.is_empty(), "no enabled algorithms");
     let searches = models
         .iter()
-        .map(|m| axes(&config, m.knn.algorithm))
+        .map(|m| axes(&config.hyperparam, m.knn.algorithm))
         .collect::<anyhow::Result<Vec<_>>>()?;
-    let max_m = searches.iter().map(|s| s.max_m).max().unwrap();
+    let capacity = config.data.index_capacity;
+    anyhow::ensure!(capacity > 0, "data.index_capacity must be positive");
+    for (model, search) in models.iter().zip(&searches) {
+        anyhow::ensure!(search.max_m <= capacity,
+            "{}: m search upper bound {} exceeds fixed data.index_capacity {}; reduce the search range or explicitly configure an appropriate operational capacity",
+            model.knn.algorithm.name(), search.max_m, capacity);
+    }
     let training = if config.hyperparam.training_data_path.is_empty() {
         &config.data.training_data_path
     } else {
@@ -312,14 +375,17 @@ fn main() -> anyhow::Result<()> {
         !training.is_empty(),
         "hyperparam.training_data_path is required"
     );
+    serenade::paths::corpus(training)?;
+    serenade::paths::input(&config.hyperparam.validation_data_path)?;
+    eprintln!(
+        "Training: {}\nValidation: {}\nOutput: {}",
+        serenade::paths::display(training),
+        serenade::paths::display(&config.hyperparam.validation_data_path),
+        serenade::paths::display(args.get(3).unwrap_or(&config.hyperparam.output_dir))
+    );
+    let mut index = VMISIndex::load_corpus(training, capacity).map_err(anyhow::Error::msg)?;
     let data = EvaluationData::load(&config.hyperparam.validation_data_path)?;
-    let mut index = VMISIndex::load_for_model(
-        training,
-        max_m,
-        config.model.idf_weighting,
-        &config.model.knn,
-    )
-    .map_err(anyhow::Error::msg)?;
+    let execution = offline::execution::Execution::new(config.hyperparam.evaluation_workers)?;
     let output = args
         .get(3)
         .map(String::as_str)
@@ -327,10 +393,6 @@ fn main() -> anyhow::Result<()> {
     std::fs::create_dir_all(output)?;
     let objective = config.hyperparam.objective;
     println!("Objective: {}", objective);
-    println!(
-        "algorithm\tbest validation {}\thyperparameters\tapplication configuration",
-        objective
-    );
     let mut comparison = Vec::new();
     for (base, search) in models.into_iter().zip(searches) {
         let Search {
@@ -340,14 +402,25 @@ fn main() -> anyhow::Result<()> {
             ..
         } = search;
         let algorithm = base.knn.algorithm.name();
+        // Retain the existing IDF representation, prepared once per algorithm.
+        // All trial-dependent weights are applied by a borrowed scoring view.
+        let mut scoring = base.knn.clone();
+        scoring.idf_weighting = 1.0;
+        index
+            .prepare_for_model(capacity, 1.0, &scoring)
+            .map_err(anyhow::Error::msg)?;
         let mut rng = StdRng::seed_from_u64(config.hyperparam.seed);
         let mut best_score = f64::NEG_INFINITY;
         let mut best_model = base.clone();
         let mut best_parameters = BTreeMap::new();
         let mut trials = Vec::new();
-        let mut prepared = None;
         let trials_path = Path::new(output).join(format!("{}-trials.jsonl", algorithm));
-        let mut records = std::io::BufWriter::new(std::fs::File::create(trials_path)?);
+        let diagnostics = !modern || config.hyperparam.save_records;
+        let mut records = if diagnostics {
+            Some(std::io::BufWriter::new(std::fs::File::create(trials_path)?))
+        } else {
+            None
+        };
         use std::io::Write;
         for trial in 0..config.hyperparam.num_trials {
             let mut model = base.clone();
@@ -377,35 +450,28 @@ fn main() -> anyhow::Result<()> {
             model.neighborhood_size_k = model.neighborhood_size_k.min(model.m_most_recent_sessions);
             parameters.insert("neighborhood_size_k", json!(model.neighborhood_size_k));
             model.knn.validate().map_err(anyhow::Error::msg)?;
-            // The only changing index statistics are VMIS's IDF weight and the reference-IDF mode.
-            let key = (
-                model.knn.needs_reference_idf(),
-                model.knn.algorithm == Algorithm::Vmis,
-                model.idf_weighting.to_bits(),
-            );
-            if prepared != Some(key) {
-                index
-                    .prepare_for_model(max_m, model.idf_weighting, &model.knn)
-                    .map_err(anyhow::Error::msg)?;
-                prepared = Some(key);
-            }
-            let result = offline::evaluate_at_cutoff(
+            let result = execution.run(
                 &index,
                 &data,
                 &model,
                 config.hyperparam.enable_business_logic,
-                std::num::NonZeroUsize::new(objective.cutoff()).unwrap(),
-            );
-            let score = result.score(objective);
+                objective,
+            )?;
+            let score = result.objective;
             for (axis, sample) in axes.iter_mut().zip(samples) {
                 axis.optimizer.tell(sample, -score)?;
             }
             let mut record = json!({"trial":trial, "hyperparameters":parameters,
-                "objective":objective.to_string(), "validation_score":score, "validation_metrics":{"cutoff":result.cutoff, "mrr":result.mrr, "ndcg":result.ndcg, "hitrate":result.hitrate, "coverage":result.coverage}});
+                "objective":objective.to_string(), "validation_score":score, "validation_metrics":{"cutoff":objective.cutoff()}});
+            record["validation_metrics"][match objective.metric() {
+                serenade::metrics::objective::RankingMetric::Mrr => "mrr",
+                serenade::metrics::objective::RankingMetric::Ndcg => "ndcg",
+                serenade::metrics::objective::RankingMetric::HitRate => "hitrate",
+            }] = json!(score);
             if objective == Default::default() {
                 record["validation_mrr_at_20"] = json!(score);
             }
-            println!(
+            eprintln!(
                 "{} trial {}/{}: {} = {:.6}",
                 algorithm,
                 trial + 1,
@@ -413,8 +479,10 @@ fn main() -> anyhow::Result<()> {
                 objective,
                 score
             );
-            writeln!(records, "{}", record)?;
-            records.flush()?;
+            if let Some(records) = &mut records {
+                writeln!(records, "{}", record)?;
+                records.flush()?;
+            }
             trials.push(record);
             if score > best_score {
                 best_score = score;
@@ -423,49 +491,53 @@ fn main() -> anyhow::Result<()> {
             }
         }
         let snippet = model_snippet(&best_model);
-        let application = format!("[hyperparam]\nobjective = {:?}\ntraining_data_path = {:?}\nvalidation_data_path = {:?}\ntest_data_path = {:?}\n\n[server]\nhost = \"{}\"\nport = {}\nnum_workers = {}\n\n[data]\ntraining_data_path = {:?}\n\n[logic]\nenable_business_logic = {}\nexample_item_id = {}\n\n{}", objective.to_string().to_lowercase(), training, config.hyperparam.validation_data_path, config.hyperparam.test_data_path, config.server.host, config.server.port, config.server.num_workers, training, config.hyperparam.enable_business_logic, config.logic.example_item_id, snippet);
-        let application_path = Path::new(output).join(format!("{}.toml", algorithm));
-        std::fs::write(&application_path, application)?;
-        let reloaded = AppConfig::try_new(application_path.to_string_lossy().into_owned())?;
+        let application_path = Path::new(output).join(format!("best-{}.toml", algorithm));
+        std::fs::write(&application_path, snippet.clone())?;
+        let reloaded = serenade::config::load_model(&application_path)?;
         anyhow::ensure!(
-            serde_json::to_value(&reloaded.model)? == serde_json::to_value(&best_model)?,
+            serde_json::to_value(&reloaded)? == serde_json::to_value(&best_model)?,
             "generated configuration did not reload"
         );
-        let mut result = json!({"algorithm":algorithm, "objective":objective.to_string(), "best_hyperparameters":best_parameters, "best_validation_score":best_score, "optimization":{"optimizer":"TPE", "iterations":config.hyperparam.num_trials, "seed":config.hyperparam.seed, "ranges":ranges, "choices":choices, "objective":format!("maximize {}", objective)}, "evaluation":{"training_data":training, "validation_data":config.hyperparam.validation_data_path, "test_data":config.hyperparam.test_data_path, "cutoff":objective.cutoff(), "business_logic":config.hyperparam.enable_business_logic}, "model_config":snippet, "trials":trials});
+        let mut result = json!({"algorithm":algorithm, "objective":objective.to_string(), "best_hyperparameters":best_parameters, "best_validation_score":best_score, "optimization":{"optimizer":"TPE", "iterations":config.hyperparam.num_trials, "seed":config.hyperparam.seed, "ranges":ranges, "choices":choices, "objective":format!("maximize {}", objective)}, "evaluation":{"training_data":training, "validation_data":config.hyperparam.validation_data_path, "test_data":config.hyperparam.test_data_path, "cutoff":objective.cutoff(), "business_logic":config.hyperparam.enable_business_logic, "workers":execution.workers(), "index_capacity":capacity}, "model_config":snippet, "trials":trials});
         if objective == Default::default() {
             result["best_validation_mrr_at_20"] = json!(best_score);
         }
-        std::fs::write(
-            Path::new(output).join(format!("{}.json", algorithm)),
-            serde_json::to_string_pretty(&result)?,
-        )?;
-        println!(
-            "{}\t{:.6}\t{}\t{}",
-            algorithm,
-            best_score,
-            serde_json::to_string(&best_parameters)?,
-            application_path.display()
-        );
+        if diagnostics {
+            std::fs::write(
+                Path::new(output).join(format!("{}.json", algorithm)),
+                serde_json::to_string_pretty(&result)?,
+            )?;
+        }
         comparison.push(result);
     }
-    println!("\nAlgorithm\tBest {}", objective);
+    println!(
+        "\n{:<14}  {:<18}  Model configuration  Hyperparameters",
+        "Algorithm",
+        format!("Best {}", objective)
+    );
+    println!("{}", "-".repeat(62));
     for result in &comparison {
         println!(
-            "{}\t{:.6}",
+            "{:<14}  {:<18.6}  best-{}.toml  {}",
             result["algorithm"].as_str().unwrap(),
-            result["best_validation_score"].as_f64().unwrap()
+            result["best_validation_score"].as_f64().unwrap(),
+            result["algorithm"].as_str().unwrap(),
+            serde_json::to_string(&result["best_hyperparameters"])?
         );
     }
-    std::fs::write(
-        Path::new(output).join("comparison.json"),
-        serde_json::to_string_pretty(&comparison)?,
-    )?;
+    if !modern || config.hyperparam.save_records {
+        std::fs::write(
+            Path::new(output).join("comparison.json"),
+            serde_json::to_string_pretty(&comparison)?,
+        )?;
+    }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serenade::config::AppConfig;
 
     #[test]
     fn categorical_search_validates_samples_and_preserves_types() {
@@ -484,7 +556,7 @@ normalize_choices = [false, true]
         let mut config = AppConfig::try_new(path.to_string_lossy().into_owned()).unwrap();
         std::fs::remove_file(path).unwrap();
         assert!(config.hyperparam.multi_algorithm);
-        let mut search = axes(&config, Algorithm::Vsknn).unwrap();
+        let mut search = axes(&config.hyperparam, Algorithm::Vsknn).unwrap();
         assert_eq!(search.choices["similarity"], vec![json!("cosine")]);
         let mut rng = StdRng::seed_from_u64(42);
         let mut seen = BTreeMap::<&str, Vec<serde_json::Value>>::new();
@@ -525,7 +597,11 @@ normalize_choices = [false, true]
                 .unwrap()
                 .choices
                 .insert("similarity".into(), text.into());
-            assert!(axes(&config, Algorithm::Vsknn).is_err(), "{}", text);
+            assert!(
+                axes(&config.hyperparam, Algorithm::Vsknn).is_err(),
+                "{}",
+                text
+            );
         }
         for algorithm in Algorithm::ALL {
             let specs = categorical_specs(algorithm);
@@ -623,12 +699,15 @@ normalize_choices = [false, true]
             .unwrap()
             .ranges
             .insert("pop_boost".into(), "unused".into());
-        let stan = axes(&config, Algorithm::Stan).unwrap();
+        let stan = axes(&config.hyperparam, Algorithm::Stan).unwrap();
         assert_eq!(stan.ranges["lambda_spw"], (0.25, 2.05));
         assert_eq!(stan.max_m, 30);
         assert!(!stan.ranges.contains_key("pop_boost"));
         assert!(!stan.ranges.contains_key("idf_weighting"));
-        assert_eq!(axes(&config, Algorithm::Sknn).unwrap().max_m, 2500);
+        assert_eq!(
+            axes(&config.hyperparam, Algorithm::Sknn).unwrap().max_m,
+            2500
+        );
         config
             .hyperparam
             .algorithms
@@ -636,7 +715,7 @@ normalize_choices = [false, true]
             .unwrap()
             .ranges
             .insert("lambda_inh".into(), "[0, 2]".into());
-        assert!(axes(&config, Algorithm::Stan).is_err());
+        assert!(axes(&config.hyperparam, Algorithm::Stan).is_err());
     }
 
     #[test]

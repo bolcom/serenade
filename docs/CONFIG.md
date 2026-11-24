@@ -1,6 +1,7 @@
-﻿# Configuration
+# Configuration
 
-Start with `configs/hpo.toml` in the extracted package. The template in `assets/example/example.zip` explicitly lists every applicable HPO range and categorical choice for all seven algorithms, with workflow commands and editing guidance. HPO generates a complete TOML for each enabled algorithm; pass that file unchanged to `evaluator` and `serving`.
+Use `workspace/hpo.toml` for HPO, generated `best-*.toml` files for models,
+and `workspace/serenade.toml` for serving operations.
 
 ## Hyperparameter optimization
 
@@ -8,17 +9,17 @@ Edit the existing `[hyperparam]` section:
 
 ```toml
 [hyperparam]
-training_data_path = "assets/example/train.txt"
-validation_data_path = "assets/example/valid.txt"
-test_data_path = "assets/example/test.txt"
+# Optional paths, relative to hpo.toml:
+# training_data_path = "/storage/train.txt"
+# validation_data_path = "/storage/validation.txt"
 objective = "ndcg@8"
 num_trials = 50
 seed = 42
-output_dir = "hpo-results"
-enable_business_logic = true
+output_dir = "."
+enable_business_logic = false
 ```
 
-Paths resolve from the terminal's working directory. Supported objectives are `mrr@k`, `ndcg@k`, and `hitrate@k`, where `k` is a positive integer; the default is `mrr@20`. MRR and HitRate assess the next item; NDCG assesses remaining session items using Serenade's discount formula. Compare NDCG results within Serenade because definitions differ across libraries.
+Paths in configuration files resolve relative to that file. CLI paths resolve from the working directory. Supported objectives are `mrr@k`, `ndcg@k`, and `hitrate@k`, where `k` is a positive integer; the default is `mrr@20`. MRR and HitRate assess the next item; NDCG assesses remaining session items using Serenade's discount formula. Compare NDCG results within Serenade because definitions differ across libraries.
 
 Algorithms are `vmis`, `sknn`, `ssknn`, `wsknn`, `vsknn`, `stan`, and `vsknn_stan`. Set `enabled = false` in an algorithm's existing section to skip it. At least one must remain enabled.
 
@@ -81,34 +82,35 @@ normalize_choices = [true]
 
 ## Evaluation and serving
 
-Generated files contain the selected `[model]` and algorithm-specific `[model.knn]` values. Relevant settings are:
+Generated files contain only `[model]` and `[model.knn]` parameters. Pass one or
+more to `evaluator --model FILE`; pass exactly one to
+`serving --model FILE --config workspace/serenade.toml`.
 
-| Section / setting | Purpose |
-| --- | --- |
-| `[data] training_data_path` | Historical training interactions |
-| `[hyperparam] test_data_path` | Held-out interactions for evaluation |
-| `[model] algorithm` | Selected algorithm |
-| `[model] m_most_recent_sessions` | Candidate session budget |
-| `[model] neighborhood_size_k` | Nearest-neighbor count |
-| `[model] max_items_in_session` | Current session history limit |
-| `[model] num_items_to_recommend` | Serving response length (default 21) |
-| `[logic] enable_business_logic` | Apply business-rule filtering |
-| `[server] host` | Listening interface |
-| `[server] port` | Listening port |
-| `[server] num_workers` | HTTP worker count |
+Evaluation defaults to `train.txt` and `test.txt` beside the model files. Serving
+defaults to `train.txt` beside the model, regardless of the serving config location.
+See [the workflow and CLI overrides](BINARIES.md).
 
-Both bundled example configurations set:
+Serving configuration:
 
 ```toml
 [server]
 host = "0.0.0.0"
 port = 8081
 num_workers = 4
+[data]
+index_capacity = 2500
+# training_data_path = "/storage/train.txt"
+# index_path = "/storage/index.vmis"
+[logic]
+enable_business_logic = false
+example_item_id = 13598
 ```
 
-Serving needs the training path; evaluation also needs the test path. Keep HPO's and the generated model's training paths consistent. Environment variables `TRAINING_DATA` and `NUM_WORKERS` can override the training path and worker count; avoid overriding training when reproducing an optimized result.
-
-See [Using the binaries](BINARIES.md) and [Data preparation](Preparation.md).
+Index capacity is independent in HPO, evaluation and serving (default 2500).
+Retrieval limits exceeding it fail; snapshots are never automatically rebuilt.
+`--index` overrides the configured data source; use `--train` for training data.
+Evaluation business filtering is disabled by default; `--business-logic true` enables it.
+Set the same filtering policy during optimization and evaluation when comparing scores.
 
 ## S-SKNN and WSKNN adaptations
 
