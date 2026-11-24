@@ -21,6 +21,13 @@ LICENSES = ("LICENSE.md", "docs/third-party/wsknn-LICENSE.md")
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def verify_release_binaries(directory, suffix):
+    actual = {p.name for p in directory.iterdir() if p.is_file() and
+              (p.suffix == ".exe" if suffix else os.access(p, os.X_OK))}
+    expected = {name + suffix for name in BINS}
+    assert actual == expected, f"Expected exactly {sorted(expected)}, found {sorted(actual)}"
+
+
 def smoke(root, iterations=3):
     suffix = ".exe" if os.name == "nt" else ""
     def run(name, *args):
@@ -40,6 +47,13 @@ def smoke(root, iterations=3):
         with (workspace / filename).open(newline="") as stream:
             rows = list(csv.DictReader(stream))
         assert len(rows) == 7 and all(int(row["predictions"]) > 0 for row in rows)
+    snapshot = root / "standalone.vmis"
+    run("serving", "--model", models[0], "--config", workspace / "serenade.toml",
+        "--build-index", snapshot, "--training-statistics", root / "training-stats.bin")
+    assert snapshot.is_file() and (root / "training-stats.bin").is_file()
+    predictions = root / "predictions.txt"
+    predictions.write_text("13598,;13598\n")
+    run("evaluator", "--train", workspace / "train.txt", "--predictions", predictions)
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
@@ -48,7 +62,7 @@ def smoke(root, iterations=3):
     config = deployment / "serenade.toml"
     config.write_text((workspace / "serenade.toml").read_text().replace("port = 8081", f"port = {port}"))
     launches = [(model, []) for model in models]
-    launches.append((models[0], ["--index", str(root / "snapshots" / "index-0.vmis")]))
+    launches.append((models[0], ["--index", str(snapshot)]))
     for model, overrides in launches:
         with (root / "server.log").open("w") as log:
             process = subprocess.Popen([str(root / ("serving" + suffix)), "--model", str(model), "--config", str(config), *overrides],
@@ -89,6 +103,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="serenade-package-") as temporary:
         staging = Path(temporary) / name
         staging.mkdir()
+        verify_release_binaries(ROOT / "target" / args.target / "release", suffix)
         for binary in BINS:
             source = ROOT / "target" / args.target / "release" / (binary + suffix)
             assert source.is_file(), source

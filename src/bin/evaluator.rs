@@ -14,6 +14,9 @@ fn main() -> Result<()> {
     run(std::env::args().skip(1).collect())
 }
 fn run(args: Vec<String>) -> Result<()> {
+    if args.iter().any(|arg| arg == "--predictions") {
+        return evaluate_predictions(args);
+    }
     let mut paths = Vec::new();
     let (mut benchmark, mut iterations, mut warmup, mut workers) = (false, 3usize, 1usize, None);
     let mut output_override = None;
@@ -411,5 +414,56 @@ fn run(args: Vec<String>) -> Result<()> {
         write_row(&mut writer, &mut columns, &row)?;
     }
     eprintln!("Results: {}", output.display());
+    Ok(())
+}
+
+/// Score external predictions without constructing a recommendation model.
+fn evaluate_predictions(args: Vec<String>) -> Result<()> {
+    use serenade::metrics::evaluation_reporter::EvaluationReporter;
+    use std::io::{BufRead, BufReader};
+    let (mut training, mut predictions) = (None, None);
+    let mut args = args.into_iter();
+    while let Some(key) = args.next() {
+        let target = match key.as_str() {
+            "--train" => &mut training,
+            "--predictions" => &mut predictions,
+            _ => anyhow::bail!("unsupported prediction-file option {key}"),
+        };
+        let value = args
+            .next()
+            .with_context(|| format!("missing value for {key}"))?;
+        ensure!(target.replace(value).is_none(), "duplicate option {key}");
+    }
+    let training =
+        serenade::paths::input(training.context("--train is required with --predictions")?)?;
+    let predictions = serenade::paths::input(predictions.context("--predictions is required")?)?;
+    let training =
+        serenade::io::read_training_data(training.to_str().context("training path is not UTF-8")?);
+    let mut reporter = EvaluationReporter::new(&training, 20);
+    for (line_number, line) in BufReader::new(std::fs::File::open(&predictions)?)
+        .lines()
+        .enumerate()
+    {
+        let parse = || -> Result<(Vec<u64>, Vec<u64>)> {
+            let line = line?;
+            let (ranked, targets) = line
+                .split_once(';')
+                .context("expected recommendations;next_items")?;
+            let items = |value: &str| -> Result<Vec<u64>> {
+                value
+                    .split(',')
+                    .filter(|s| !s.trim().is_empty())
+                    .map(|s| s.trim().parse().map_err(anyhow::Error::from))
+                    .collect()
+            };
+            let targets = items(targets)?;
+            ensure!(!targets.is_empty(), "next_items must not be empty");
+            Ok((items(ranked)?, targets))
+        };
+        let (ranked, targets) =
+            parse().with_context(|| format!("{}:{}", predictions.display(), line_number + 1))?;
+        reporter.add(&ranked, &targets);
+    }
+    println!("{}\n{}", reporter.get_name(), reporter.result());
     Ok(())
 }

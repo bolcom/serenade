@@ -179,6 +179,37 @@ The returned JSON array is a list of recommended item IDs.
 
 For more details, see [Binary packages](docs/BINARIES.md), [Configuration](docs/CONFIG.md), and [Data preparation](docs/Preparation.md).
 
+## Index export and external predictions
+
+The standard `cargo build --release` builds exactly `tpe_hyperparameter_optm`,
+`evaluator`, and `serving`. Binary targets are declared explicitly in `Cargo.toml`;
+automatic discovery in `src/bin/` is disabled.
+
+To construct and persist an index without starting the server:
+
+```sh
+serving --model workspace/best-vmis.toml --config workspace/serenade.toml --build-index index.vmis --training-statistics training-stats.bin
+```
+
+`--training-statistics` is optional and exports raw corpus aggregates for legacy
+Avro indexes. This mode uses the configured index capacity and exits before opening
+the session database or HTTP listener. Load the snapshot with `serving --model
+workspace/best-vmis.toml --config workspace/serenade.toml --index index.vmis`.
+Evaluator benchmark snapshots remain available through `--snapshot-dir`.
+
+To score predictions produced by another model:
+
+```sh
+evaluator --train workspace/train.txt --predictions predictions.txt
+```
+
+Each line contains comma-separated recommendation IDs, a semicolon, then
+comma-separated next-item IDs: `10,20,30;20,40`. Empty recommendation lists and
+trailing commas are accepted; next-item lists must contain at least one ID.
+This mode prints the evaluation count and all eight metrics at 20 as CSV to stdout.
+Malformed prediction rows fail with the filename and line number.
+These commands replace the former `build_index` and `evaluate_file` executables.
+
 ## Research and citation
 
 If you use Serenade in academic work, please cite the original research:

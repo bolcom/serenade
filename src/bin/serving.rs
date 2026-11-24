@@ -16,7 +16,9 @@ use serenade::vmisknn::vmis_index::VMISIndex;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let load = || -> anyhow::Result<ServingConfig> {
+    let mut build_index = None;
+    let mut training_statistics = None;
+    let mut load = || -> anyhow::Result<ServingConfig> {
         let mut model = None;
         let mut config_path = None;
         let mut train = None;
@@ -31,6 +33,8 @@ async fn main() -> std::io::Result<()> {
                 "--config" => &mut config_path,
                 "--train" => &mut train,
                 "--index" => &mut snapshot,
+                "--build-index" => &mut build_index,
+                "--training-statistics" => &mut training_statistics,
                 _ => anyhow::bail!("unknown option {}", key),
             };
             anyhow::ensure!(target.replace(value).is_none(), "duplicate option {}", key);
@@ -42,6 +46,33 @@ async fn main() -> std::io::Result<()> {
         )?;
         let mut config = serenade::config::load_serving(&config_path, &model_path)?;
         anyhow::ensure!(
+            training_statistics.is_none() || build_index.is_some(),
+            "--training-statistics requires --build-index"
+        );
+        // Resolve and validate exports before loading the corpus or opening output.
+        let mut outputs = Vec::new();
+        for output in [&build_index, &training_statistics].into_iter().flatten() {
+            let path = serenade::paths::absolute(output)?;
+            let parent = std::fs::canonicalize(path.parent().unwrap())?;
+            let path = if path.exists() {
+                std::fs::canonicalize(&path)?
+            } else {
+                parent.join(
+                    path.file_name()
+                        .ok_or_else(|| anyhow::anyhow!("output requires a filename"))?,
+                )
+            };
+            anyhow::ensure!(
+                path != model_path && path != config_path,
+                "output must not overwrite an input"
+            );
+            anyhow::ensure!(
+                !outputs.contains(&path),
+                "index and training statistics paths collide"
+            );
+            outputs.push(path);
+        }
+        anyhow::ensure!(
             snapshot.is_none() || train.is_none(),
             "use either --train or --index"
         );
@@ -51,6 +82,12 @@ async fn main() -> std::io::Result<()> {
             .transpose()?
             .unwrap_or_else(|| std::path::PathBuf::from(&config.data.training_data_path));
         config.data.training_data_path = serenade::paths::corpus(source)?.display().to_string();
+        anyhow::ensure!(
+            outputs
+                .iter()
+                .all(|p| p != std::path::Path::new(&config.data.training_data_path)),
+            "output must not overwrite an input"
+        );
         eprintln!(
             "Model: {}\nServing configuration: {}\nTraining/index: {}",
             model_path.display(),
@@ -81,6 +118,22 @@ async fn main() -> std::io::Result<()> {
             &config.model.knn,
         )
         .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+    if let Some(output) = build_index {
+        if let Some(metadata) = training_statistics {
+            index
+                .save_training_statistics(std::path::Path::new(&metadata))
+                .map_err(std::io::Error::other)?;
+        }
+        index
+            .save(&output)
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        println!(
+            "Saved {} (estimated owned index allocation: {} bytes)",
+            output,
+            index.estimated_heap_bytes()
+        );
+        return Ok(());
+    }
     let vmis_index = Arc::new(index);
     let knn = config.model.knn.clone();
 

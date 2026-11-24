@@ -11,6 +11,27 @@ import package_release
 
 
 class PackageReleaseTest(unittest.TestCase):
+    def test_release_rejects_unexpected_executables(self):
+        for suffix in ("", ".exe"):
+            with tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary)
+                for name in (*package_release.BINS, "obsolete"):
+                    binary = directory / (name + suffix)
+                    binary.write_bytes(b"binary")
+                    binary.chmod(0o755)
+                with self.assertRaisesRegex(AssertionError, "Expected exactly"):
+                    package_release.verify_release_binaries(directory, suffix)
+
+    def test_cargo_exposes_exactly_the_release_applications(self):
+        import json
+        import subprocess
+        metadata = json.loads(subprocess.check_output(
+            ["cargo", "metadata", "--no-deps", "--format-version", "1"],
+            cwd=package_release.ROOT))
+        package = next(p for p in metadata["packages"] if p["name"] == "serenade")
+        self.assertEqual(sorted(t["name"] for t in package["targets"] if "bin" in t["kind"]),
+                         sorted(package_release.BINS))
+
     def test_release_archives_preserve_licenses_and_portable_checksums(self):
         for platform, target in (
             ("windows-x86_64", "x86_64-pc-windows-msvc"),
@@ -31,6 +52,7 @@ class PackageReleaseTest(unittest.TestCase):
             binaries.mkdir(parents=True)
             for name in package_release.BINS:
                 (binaries / (name + suffix)).write_bytes(b"test binary")
+                (binaries / (name + suffix)).chmod(0o755)
             examples = root / "assets/example"
             examples.mkdir(parents=True)
             with zipfile.ZipFile(examples / "example.zip", "w") as archive:

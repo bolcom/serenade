@@ -224,3 +224,90 @@ fn serving_overrides_and_persisted_capacity_are_independent() {
         .unwrap();
     assert!(VMISIndex::load_corpus(&c.data.training_data_path, 2501).is_err());
 }
+
+#[test]
+fn standalone_index_export_preserves_loading_and_raw_statistics() {
+    let f = Fixture::new();
+    std::fs::write(
+        f.0.join("workspace/model.toml"),
+        "[model]\nalgorithm = \"vmis\"\nm_most_recent_sessions = 5\nneighborhood_size_k = 3\n",
+    )
+    .unwrap();
+    let serving = env!("CARGO_BIN_EXE_serving");
+    let base = [
+        "--model",
+        "workspace/model.toml",
+        "--config",
+        "deployment/serenade.toml",
+    ];
+    let mut args = base.to_vec();
+    args.extend([
+        "--build-index",
+        "index.vmis",
+        "--training-statistics",
+        "training-stats.bin",
+    ]);
+    f.ok(serving, &args);
+    assert!(!f.0.join("sessions.db").exists());
+    let model = config::load_model(&f.0.join("workspace/model.toml")).unwrap();
+    let original = VMISIndex::load_for_model(
+        serenade::paths::input(f.0.join("workspace/train.txt"))
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        2500,
+        model.idf_weighting,
+        &model.knn,
+    )
+    .unwrap();
+    let loaded = VMISIndex::load_for_model(
+        f.0.join("index.vmis").to_str().unwrap(),
+        2500,
+        model.idf_weighting,
+        &model.knn,
+    )
+    .unwrap();
+    original
+        .save_training_statistics(&f.0.join("expected-stats.bin"))
+        .unwrap();
+    assert_eq!(
+        std::fs::read(f.0.join("training-stats.bin")).unwrap(),
+        std::fs::read(f.0.join("expected-stats.bin")).unwrap()
+    );
+    assert_eq!(
+        original.training_items().collect::<Vec<_>>(),
+        loaded.training_items().collect::<Vec<_>>()
+    );
+    // The same serving loader can export an existing snapshot without training data.
+    std::fs::remove_file(f.0.join("workspace/train.txt")).unwrap();
+    let mut args = base.to_vec();
+    args.extend(["--index", "index.vmis", "--build-index", "copy.vmis"]);
+    f.ok(serving, &args);
+    let copied = VMISIndex::load_for_model(
+        f.0.join("copy.vmis").to_str().unwrap(),
+        2500,
+        model.idf_weighting,
+        &model.knn,
+    )
+    .unwrap();
+    let predict = |index: &VMISIndex| {
+        serenade::vmisknn::predict_with_model(index, &[10, 20], 5, 3, 20, false, &model.knn, 101.)
+            .into_sorted_vec()
+            .into_iter()
+            .map(|s| (s.id, s.score))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(predict(&original), predict(&loaded));
+    assert_eq!(predict(&loaded), predict(&copied));
+
+    let mut args = base.to_vec();
+    args.extend(["--training-statistics", "bad.bin"]);
+    let result = f.run(serving, &args);
+    assert!(!result.status.success());
+    assert!(String::from_utf8_lossy(&result.stderr).contains("requires --build-index"));
+    let before = std::fs::read(f.0.join("index.vmis")).unwrap();
+    let mut args = base.to_vec();
+    args.extend(["--index", "index.vmis", "--build-index", "index.vmis"]);
+    assert!(!f.run(serving, &args).status.success());
+    assert_eq!(before, std::fs::read(f.0.join("index.vmis")).unwrap());
+}

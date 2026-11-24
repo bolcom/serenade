@@ -10,12 +10,20 @@ version = "0.3.6"
 authors = ["submission@sigmod2021.org"]
 edition = "2021"
 rust-version = "1.89"
+autobins = false
 
 
 [[bin]]
 name = "serving"
 path = "src/bin/serving.rs"
 
+[[bin]]
+name = "evaluator"
+path = "src/bin/evaluator.rs"
+
+[[bin]]
+name = "tpe_hyperparameter_optm"
+path = "src/bin/tpe_hyperparameter_optm.rs"
 
 [dependencies]
 csv = "1.4.0"

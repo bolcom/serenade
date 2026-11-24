@@ -245,3 +245,45 @@ fn capacity_rejected_before_data_loading_and_inputs_protected() {
         assert_eq!(std::fs::read(input).unwrap(), before);
     }
 }
+
+#[test]
+fn external_predictions_preserve_metrics_and_reject_malformed_rows() {
+    let f = Fixture::new();
+    let predictions = f.0.join("external predictions.txt");
+    std::fs::write(&predictions, "10,20,;20,30\n;40\n40,30;30\n").unwrap();
+    let training = serenade::io::read_training_data(f.0.join("train.tsv").to_str().unwrap());
+    let mut reference = EvaluationReporter::new(&training, 20);
+    reference.add(&[10, 20], &[20, 30]);
+    reference.add(&[], &[40]);
+    reference.add(&[40, 30], &[30]);
+    let run = || {
+        Command::new(env!("CARGO_BIN_EXE_evaluator"))
+            .arg("--train")
+            .arg(f.0.join("train.tsv"))
+            .arg("--predictions")
+            .arg(&predictions)
+            .output()
+            .unwrap()
+    };
+    let result = run();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(result.stdout)
+            .unwrap()
+            .replace("\r\n", "\n"),
+        format!("{}\n{}\n", reference.get_name(), reference.result())
+    );
+    for bad in ["10,20", "10;", "invalid;20", "10;20;30"] {
+        std::fs::write(&predictions, format!("10;20\n{bad}\n")).unwrap();
+        let result = run();
+        assert!(!result.status.success());
+        assert!(String::from_utf8_lossy(&result.stderr).contains("external predictions.txt:2"));
+        assert!(result.stdout.is_empty());
+    }
+    std::fs::remove_file(&predictions).unwrap();
+    assert!(!run().status.success());
+}
