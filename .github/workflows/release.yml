@@ -1,49 +1,31 @@
-name: Automatically increment app version, build and deploy binaries, merge to main
-run-name: "PR #${{ github.event.pull_request.number }} - increment version, build binaries, merge and deploy"
+name: Binary release
 on:
-  pull_request_target:
-    branches: [main]
-    types: [opened, reopened, ready_for_review, synchronize, auto_merge_enabled, auto_merge_disabled, edited]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a GitHub Release after all builds pass
+        type: boolean
+        default: false
+      release_tag:
+        description: Existing version tag to publish (for example v0.3.3)
+        type: string
+        required: false
+  push:
+    branches: ['main', 'release/**']
+    tags: ['v*.*.*']
 permissions:
   contents: read
 concurrency:
-  group: binary-release
+  group: binary-release-${{ inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 jobs:
-  gate:
-    if: >-
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      !github.event.pull_request.draft && github.event.pull_request.auto_merge == null
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: read
-      pull-requests: read
-      statuses: write
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-      - name: Wait for Enable auto-merge to start the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_PR: ${{ github.event.pull_request.number }}
-        run: python scripts/release_pr.py gate --pr "$RELEASE_PR"
   prepare:
-    if: >-
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      !github.event.pull_request.draft && github.event.pull_request.auto_merge != null
     runs-on: ubuntu-22.04
-    permissions:
-      contents: write
-      pull-requests: read
-      statuses: write
     outputs:
-      ref: ${{ steps.pr.outputs.ref }}
-      version: ${{ steps.pr.outputs.version }}
-      pr: ${{ steps.pr.outputs.pr }}
-      base: ${{ steps.pr.outputs.base }}
-      release: ${{ steps.pr.outputs.release }}
+      ref: ${{ steps.resolve.outputs.ref }}
+      version: ${{ steps.resolve.outputs.version }}
+      publish: ${{ steps.resolve.outputs.publish }}
+      build: ${{ steps.resolve.outputs.build }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -51,20 +33,64 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Test release automation
-        run: |
-          python -m unittest discover -s scripts -p test_release_version.py
-          python -m unittest discover -s scripts -p test_release_pr.py
-      - name: Automatically increment app version on the PR
-        id: pr
+      - name: Test release version detection
+        run: python -m unittest discover -s scripts -p test_release_version.py
+      - name: Resolve release tag and immutable build commit
+        id: resolve
         env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_PR: ${{ github.event.pull_request.number }}
-        run: python scripts/release_pr.py prepare --pr "$RELEASE_PR"
+          MANUAL_PUBLISH: ${{ inputs.publish }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+          BEFORE_SHA: ${{ github.event.before }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          publish=false
+          tag=''
+          build=true
+          automatic=false
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/tags/* ]]; then
+            publish=true
+            tag="$GITHUB_REF_NAME"
+          elif [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]; then
+            tag=$(python scripts/release_version.py "$BEFORE_SHA" "$GITHUB_SHA")
+            if [[ -n "$tag" ]]; then
+              publish=true
+              automatic=true
+            else
+              build=false
+            fi
+          elif [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$MANUAL_PUBLISH" == true ]]; then
+            publish=true
+            tag="$REQUESTED_TAG"
+          elif [[ -n "$REQUESTED_TAG" ]]; then
+            echo 'Select Publish a GitHub Release to use a release tag.' >&2
+            exit 1
+          fi
+          ref="$GITHUB_SHA"
+          version="validation-$GITHUB_SHA"
+          if [[ "$publish" == true ]]; then
+            if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo 'Publishing requires an existing tag such as v0.3.3.' >&2
+              exit 1
+            fi
+            if [[ "$automatic" != true ]]; then
+              ref=$(git rev-parse --verify "refs/tags/$tag^{commit}")
+            fi
+            if git show-ref --verify --quiet "refs/tags/$tag"; then
+              tagged_ref=$(git rev-parse "refs/tags/$tag^{commit}")
+              if [[ "$tagged_ref" != "$ref" ]]; then
+                echo "Tag $tag already points to a different commit." >&2
+                exit 1
+              fi
+            fi
+            version="$tag"
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
   build:
-    if: needs.prepare.outputs.release == 'true'
-    permissions:
-      contents: read
+    if: needs.prepare.outputs.build == 'true'
     needs: prepare
     strategy:
       fail-fast: false
@@ -131,34 +157,9 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 14
-  merge:
-    if: always() && needs.prepare.result == 'success'
-    needs: [prepare, build]
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: write
-      pull-requests: write
-      statuses: write
-    outputs:
-      ref: ${{ steps.merge.outputs.ref }}
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-      - name: Merge tested version into main
-        id: merge
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_PR: ${{ needs.prepare.outputs.pr }}
-          TESTED_HEAD: ${{ needs.prepare.outputs.ref }}
-          TESTED_BASE: ${{ needs.prepare.outputs.base }}
-          BUILD_RESULT: ${{ needs.build.result }}
-          QUICK_MERGE: ${{ needs.prepare.outputs.release == 'false' }}
-        run: python scripts/release_pr.py merge --pr "$RELEASE_PR" --head "$TESTED_HEAD" --base "$TESTED_BASE" --result "$BUILD_RESULT" --quick-merge "$QUICK_MERGE"
   publish:
-    if: always() && needs.merge.result == 'success' && needs.prepare.outputs.release == 'true'
-    needs: [prepare, build, merge]
+    if: needs.prepare.outputs.publish == 'true'
+    needs: [prepare, build]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -168,12 +169,12 @@ jobs:
           pattern: serenade-*
           merge-multiple: true
           path: dist
-      - name: Deploy tested binaries to GitHub Releases
+      - name: Verify complete release and publish draft atomically
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.prepare.outputs.version }}
-          RELEASE_SHA: ${{ needs.merge.outputs.ref }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.ref }}
         shell: bash
         run: |
           set -euo pipefail

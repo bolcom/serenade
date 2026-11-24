@@ -7,62 +7,38 @@ Keep them unless the workflow and its dependencies are updated together.
 
 | File | Release responsibility |
 |---|---|
-| `release_version.py` | Bumps and validates Cargo manifest and lockfile versions. |
-| `release_pr.py` | Prepares the release PR and merges its tested commit. |
-| `test_release_pr.py` | Checks merge and publication guards. |
+| `release_version.py` | Detects package version increases for publication. |
 | `test_release_version.py` | Validates release version logic before tagging. |
 | `package_release.py` | Smoke-tests and packages native release applications. |
 | `test_package_release.py` | Validates packaging before building release artifacts. |
 
-## Merge a PR
+## Build and publish a release
 
-1. Open a non-draft PR into `main` from a branch in this repository.
-2. Update the branch with the latest `main`.
-3. Click **Enable auto-merge** on the PR.
+1. Create a branch from `main` named `release/<version>`.
+2. Increase the package version in both `Cargo.toml` and `Cargo.lock`.
+3. Push the branch and open a PR. Pushes to `release/**` test and build binaries
+   as workflow artifacts; they do not publish a GitHub Release.
+4. Merge the PR normally. A push to `main` that increases the package version
+   tests, builds, packages and smoke-tests Windows x86_64, Linux x86_64,
+   macOS x86_64 and macOS ARM64 binaries from the merged commit, then creates
+   the version tag and publishes the archives and checksums to GitHub Releases.
 
-The single workflow, **Automatically increment app version, build and deploy
-binaries, merge to main**, then:
+Pushes to `main` without a version increase skip
+binary builds and publication. Publication requires every platform build to
+succeed. A failed run can be rerun after investigating the failure; an incomplete
+release draft must be inspected and removed explicitly before retrying publication.
 
-- Increments the patch version in `Cargo.toml` and `Cargo.lock` on the PR branch.
-  An explicit version increase is preserved, including on retries.
-- Tests, builds, packages and smoke-tests Windows x86_64, Linux x86_64,
-  macOS x86_64 and macOS ARM64 binaries from that exact commit.
-- Passes the `release-binaries` status and merges using the PR's selected merge
-  method. Required GitHub reviews and checks still apply.
-- Verifies that the merged tree matches the built tree, then tags the merged
-  commit and deploys the archives and checksums to GitHub Releases.
+### Manual runs and tag releases
 
-### Quick merge without a release
+The **Binary release** workflow also supports **Run workflow** for build-only
+validation. To publish manually, first create a version tag on the intended
+commit, then select **Publish a GitHub Release** and enter that existing tag
+(for example `v0.3.6`). Pushing a version tag also builds and publishes it.
+Do not start a tag release while an automatic release for the same version is
+running.
 
-Check this box in the PR description before enabling auto-merge:
-
-```markdown
-- [x] Skip version bump, binary builds and release; merge changes only
-```
-
-The PR template includes the checkbox, unchecked by default. Checking it skips
-all version changes, binary builds and release publication. Required reviews
-and other branch checks still apply.
-
-Disabling auto-merge cancels a pending release. Editing the checkbox or pushing
-changes while auto-merge is enabled starts a new run; stale runs cannot publish.
-If `main` changes, update the PR branch. Failed builds leave the PR open; rerun
-failed jobs after fixing the failure. An incomplete release draft must be
-inspected and removed before retrying the publication job.
-
-### One-time repository settings (administrator)
-
-- Enable **Allow auto-merge** in Settings > General > Pull Requests.
-- Require the `release-binaries` status on `main`. Otherwise GitHub can merge
-  immediately, before the workflow bumps the version or builds binaries.
-- Allow workflow tokens to write contents, pull requests and commit statuses.
-
-Opening a PR posts a pending `release-binaries` status. **Enable auto-merge**
-starts the release; **Merge pull request** cannot be intercepted by a workflow.
-There are no manual workflow inputs or separate push/tag workflows. Fork PRs
-are excluded; use a branch in this repository. The workflow reads automation
-from `main`; PR code runs only in build jobs with read-only permissions and
-without persisted checkout credentials.
+Workflow tokens must be allowed to write repository contents for publication.
+Normal PR reviews still apply.
 
 ## Optional development tools
 
