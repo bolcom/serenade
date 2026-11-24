@@ -60,13 +60,16 @@ Run from a writable directory: HPO and evaluation write reports, and serving cre
 
 ## Publishing a new version
 
-Open a non-draft `release/*` PR into `main` and update it with the latest
-`main`. In Actions, run **Binary release** on **main** with the PR number.
-The workflow bumps the patch version in both Cargo files on the PR branch,
-builds and tests all four platforms, squash-merges the tested PR, then tags
-and publishes the same binaries. An explicit version increase is preserved.
+Open a non-draft PR into `main` from a branch in this repository, update it
+with the latest `main`, then click **Enable auto-merge**. The workflow automatically
+increments the app version in both Cargo files, builds and tests all four
+platforms, merges to `main`, and deploys those binaries to GitHub Releases.
+An explicit version increase is preserved.
 
-This is the only release workflow and trigger. Failed builds leave the PR open.
-If either branch changes during the build, update the PR and restart. Required
-reviews and checks still apply. See [release instructions](../scripts/README.md#release-a-pr)
-for repository settings and retry details.
+For small changes, check **Skip version bump, binary builds and release; merge
+changes only** in the PR description before enabling auto-merge.
+
+This is the only workflow. Required reviews and checks still apply. A repository
+admin must enable auto-merge and require `release-binaries` on `main` so GitHub
+waits for the workflow. See [merge and release instructions](../scripts/README.md#merge-a-pr)
+for setup and retries.

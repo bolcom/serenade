@@ -1,19 +1,38 @@
-name: Binary release
+name: Automatically increment app version, build and deploy binaries, merge to main
+run-name: "PR #${{ github.event.pull_request.number }} - increment version, build binaries, merge and deploy"
 on:
-  workflow_dispatch:
-    inputs:
-      release_pr:
-        description: Release PR number; bump, build, merge and publish (run on main)
-        type: string
-        required: true
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, ready_for_review, synchronize, auto_merge_enabled, auto_merge_disabled, edited]
 permissions:
   contents: read
 concurrency:
   group: binary-release
   cancel-in-progress: false
 jobs:
+  gate:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !github.event.pull_request.draft && github.event.pull_request.auto_merge == null
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Wait for Enable auto-merge to start the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PR: ${{ github.event.pull_request.number }}
+        run: python scripts/release_pr.py gate --pr "$RELEASE_PR"
   prepare:
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !github.event.pull_request.draft && github.event.pull_request.auto_merge != null
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -24,6 +43,7 @@ jobs:
       version: ${{ steps.pr.outputs.version }}
       pr: ${{ steps.pr.outputs.pr }}
       base: ${{ steps.pr.outputs.base }}
+      release: ${{ steps.pr.outputs.release }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -35,13 +55,16 @@ jobs:
         run: |
           python -m unittest discover -s scripts -p test_release_version.py
           python -m unittest discover -s scripts -p test_release_pr.py
-      - name: Prepare release PR
+      - name: Automatically increment app version on the PR
         id: pr
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_PR: ${{ inputs.release_pr }}
+          RELEASE_PR: ${{ github.event.pull_request.number }}
         run: python scripts/release_pr.py prepare --pr "$RELEASE_PR"
   build:
+    if: needs.prepare.outputs.release == 'true'
+    permissions:
+      contents: read
     needs: prepare
     strategy:
       fail-fast: false
@@ -69,6 +92,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
@@ -122,7 +146,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Merge tested release PR
+      - name: Merge tested version into main
         id: merge
         env:
           GH_TOKEN: ${{ github.token }}
@@ -130,9 +154,10 @@ jobs:
           TESTED_HEAD: ${{ needs.prepare.outputs.ref }}
           TESTED_BASE: ${{ needs.prepare.outputs.base }}
           BUILD_RESULT: ${{ needs.build.result }}
-        run: python scripts/release_pr.py merge --pr "$RELEASE_PR" --head "$TESTED_HEAD" --base "$TESTED_BASE" --result "$BUILD_RESULT"
+          QUICK_MERGE: ${{ needs.prepare.outputs.release == 'false' }}
+        run: python scripts/release_pr.py merge --pr "$RELEASE_PR" --head "$TESTED_HEAD" --base "$TESTED_BASE" --result "$BUILD_RESULT" --quick-merge "$QUICK_MERGE"
   publish:
-    if: needs.merge.result == 'success'
+    if: always() && needs.merge.result == 'success' && needs.prepare.outputs.release == 'true'
     needs: [prepare, build, merge]
     runs-on: ubuntu-22.04
     permissions:
@@ -143,7 +168,7 @@ jobs:
           pattern: serenade-*
           merge-multiple: true
           path: dist
-      - name: Verify complete release and publish draft atomically
+      - name: Deploy tested binaries to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
