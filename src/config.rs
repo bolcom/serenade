@@ -157,7 +157,32 @@ impl AppConfig {
         conf.add_source(config_env);
 
         // Parse into custom config struct
-        let config = AppConfig::parse(conf)?;
+        let mut config = AppConfig::parse(conf)?;
+        if !config_path.is_empty() {
+            let base = std::path::Path::new(&config_path);
+            if config.hyperparam.training_data_path.is_empty() {
+                config.hyperparam.training_data_path = config.data.training_data_path.clone();
+            }
+            for (value, default) in [
+                (&mut config.data.training_data_path, "train.txt"),
+                (&mut config.hyperparam.training_data_path, "train.txt"),
+                (
+                    &mut config.hyperparam.validation_data_path,
+                    "validation.txt",
+                ),
+                (&mut config.hyperparam.test_data_path, "test.txt"),
+                (&mut config.hyperparam.output_dir, "."),
+            ] {
+                let path = if value.is_empty() {
+                    default
+                } else {
+                    value.as_str()
+                };
+                *value = crate::paths::relative_to(base, path)?
+                    .to_string_lossy()
+                    .into_owned();
+            }
+        }
         config.validate()?;
         Ok(config)
     }
@@ -210,7 +235,7 @@ impl DataConfig {
             index_capacity: conf
                 .get(path.push("index_capacity"))
                 .trim()
-                .value_or_default("index_capacity", 2500)?,
+                .value_or_default("index_capacity", crate::paths::DEFAULT_INDEX_CAPACITY)?,
             training_data_path: conf
                 .get(path.push("training_data_path"))
                 .unquote()
@@ -343,7 +368,7 @@ impl HyperparamConfig {
             output_dir: conf
                 .get(path.push("output_dir"))
                 .unquote()
-                .value_or_default("output_dir", "hpo-results".to_owned())?,
+                .value_or_default("output_dir", String::new())?,
             algorithms,
             multi_algorithm,
             seed: conf
@@ -374,7 +399,7 @@ impl HyperparamConfig {
             save_records: conf
                 .get(path.push("save_records"))
                 .trim()
-                .value_or_default("save_records", true)?,
+                .value_or_default("save_records", false)?,
             out_path: conf
                 .get(path.push("out_path"))
                 .unquote()
@@ -623,4 +648,141 @@ mod tests {
             .to_string()
             .contains("open configuration"));
     }
+}
+
+/// Read a portable model without requiring operational or dataset settings.
+pub fn load_model(path: &std::path::Path) -> anyhow::Result<ModelConfig> {
+    let path = crate::paths::input(path)?;
+    let mut conf = Config::default();
+    conf.add_source(
+        ConfigText::new(File::open(&path)?, &path.display().to_string())
+            .map_err(|e| anyhow::anyhow!("parse model {}: {}", path.display(), e))?,
+    );
+    let model = ModelConfig::parse(&conf, ConfPath::from(&["model"]))?;
+    anyhow::ensure!(
+        knn_value(&conf, &ConfPath::from(&["model"]), "algorithm")?.is_some(),
+        "{}: model.algorithm is required",
+        path.display()
+    );
+    validate_model(&model, usize::MAX)?;
+    Ok(model)
+}
+
+pub fn validate_model(model: &ModelConfig, capacity: usize) -> anyhow::Result<()> {
+    anyhow::ensure!(capacity > 0, "index capacity must be positive");
+    anyhow::ensure!(
+        model.m_most_recent_sessions <= capacity,
+        "model retrieval limit {} exceeds index capacity {}",
+        model.m_most_recent_sessions,
+        capacity
+    );
+    anyhow::ensure!(
+        model.m_most_recent_sessions > 0
+            && model.neighborhood_size_k > 0
+            && model.max_items_in_session > 0
+            && model.num_items_to_recommend > 0,
+        "model retrieval, neighborhood, session and recommendation limits must be positive"
+    );
+    anyhow::ensure!(
+        model.idf_weighting.is_finite(),
+        "model.idf_weighting must be finite"
+    );
+    model.knn.validate().map_err(anyhow::Error::msg)
+}
+
+/// Operational serving settings use their own file's path base; model defaults do not.
+pub fn load_serving(
+    path: &std::path::Path,
+    model: &std::path::Path,
+) -> anyhow::Result<ServingConfig> {
+    let mut conf = Config::default();
+    conf.add_source(
+        ConfigText::new(File::open(path)?, &path.display().to_string()).map_err(|e| {
+            anyhow::anyhow!("parse serving configuration {}: {}", path.display(), e)
+        })?,
+    );
+    let snapshot = knn_value(&conf, &ConfPath::from(&["data"]), "index_path")?;
+    let mut config = ServingConfig {
+        server: ServerConfig::parse(&conf, ConfPath::from(&["server"]))?,
+        data: DataConfig::parse(&conf, ConfPath::from(&["data"]))?,
+        logic: LogicConfig::parse(&conf, ConfPath::from(&["logic"]))?,
+        log: LogConfig::parse(&conf, ConfPath::from(&["log"]))?,
+        model: load_model(model)?,
+    };
+    let source = snapshot.unwrap_or_else(|| config.data.training_data_path.clone());
+    config.data.training_data_path = if source.is_empty() {
+        crate::paths::relative_to(model, "train.txt")?
+    } else {
+        crate::paths::relative_to(path, source)?
+    }
+    .display()
+    .to_string();
+    anyhow::ensure!(
+        !config.server.host.trim().is_empty(),
+        "server.host must not be empty"
+    );
+    anyhow::ensure!(
+        (1..=65535).contains(&config.server.port),
+        "server.port must be in 1..=65535"
+    );
+    anyhow::ensure!(
+        config.server.num_workers > 0,
+        "server.num_workers must be positive"
+    );
+    validate_model(&config.model, config.data.index_capacity)?;
+    Ok(config)
+}
+
+/// Optimization settings, independent of server settings.
+pub struct HpoConfig {
+    pub hyperparam: HyperparamConfig,
+    pub data: DataConfig,
+    pub model: ModelConfig,
+}
+impl HpoConfig {
+    pub fn load(path: &std::path::Path) -> anyhow::Result<Self> {
+        let path = crate::paths::input(path)?;
+        let mut conf = Config::default();
+        conf.add_source(
+            ConfigText::new(File::open(&path)?, &path.display().to_string()).map_err(|e| {
+                anyhow::anyhow!("parse HPO configuration {}: {}", path.display(), e)
+            })?,
+        );
+        let mut hyperparam = HyperparamConfig::parse(&conf, ConfPath::from(&["hyperparam"]))?;
+        let data = DataConfig::parse(&conf, ConfPath::from(&["data"]))?;
+        if hyperparam.training_data_path.is_empty() {
+            hyperparam.training_data_path = data.training_data_path.clone();
+        }
+        for (value, default) in [
+            (&mut hyperparam.training_data_path, "train.txt"),
+            (&mut hyperparam.validation_data_path, "validation.txt"),
+            (&mut hyperparam.output_dir, "."),
+        ] {
+            *value = crate::paths::relative_to(
+                &path,
+                if value.is_empty() {
+                    default
+                } else {
+                    value.as_str()
+                },
+            )?
+            .display()
+            .to_string();
+        }
+        // Retain fixed model defaults for older HPO files; none are serving settings.
+        let model = ModelConfig::parse(&conf, ConfPath::from(&["model"]))?;
+        Ok(Self {
+            hyperparam,
+            data,
+            model,
+        })
+    }
+}
+
+pub struct ServingConfig {
+    pub server: ServerConfig,
+    pub data: DataConfig,
+    pub logic: LogicConfig,
+    pub log: LogConfig,
+    pub model: ModelConfig,
 }

@@ -7,7 +7,7 @@ use actix_web::http::header;
 use std::sync::Arc;
 use std::time::Duration;
 
-use serenade::config::AppConfig;
+use serenade::config::ServingConfig;
 use serenade::dataframeutils::SharedHandlesAndConfig;
 use serenade::endpoints::index_resource::internal;
 use serenade::endpoints::recommend_resource::v1_recommend;
@@ -16,9 +16,51 @@ use serenade::vmisknn::vmis_index::VMISIndex;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let config_path = std::env::args().nth(1).unwrap_or_default();
-    let config = AppConfig::try_new(config_path)
-        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
+    let load = || -> anyhow::Result<ServingConfig> {
+        let mut model = None;
+        let mut config_path = None;
+        let mut train = None;
+        let mut snapshot = None;
+        let mut args = std::env::args().skip(1);
+        while let Some(key) = args.next() {
+            let value = args
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("missing value for {}", key))?;
+            let target = match key.as_str() {
+                "--model" => &mut model,
+                "--config" => &mut config_path,
+                "--train" => &mut train,
+                "--index" => &mut snapshot,
+                _ => anyhow::bail!("unknown option {}", key),
+            };
+            anyhow::ensure!(target.replace(value).is_none(), "duplicate option {}", key);
+        }
+        let model_path =
+            serenade::paths::input(model.ok_or_else(|| anyhow::anyhow!("--model is required"))?)?;
+        let config_path = serenade::paths::input(
+            config_path.ok_or_else(|| anyhow::anyhow!("--config is required"))?,
+        )?;
+        let mut config = serenade::config::load_serving(&config_path, &model_path)?;
+        anyhow::ensure!(
+            snapshot.is_none() || train.is_none(),
+            "use either --train or --index"
+        );
+        let source = snapshot
+            .or(train)
+            .map(serenade::paths::absolute)
+            .transpose()?
+            .unwrap_or_else(|| std::path::PathBuf::from(&config.data.training_data_path));
+        config.data.training_data_path = serenade::paths::corpus(source)?.display().to_string();
+        eprintln!(
+            "Model: {}\nServing configuration: {}\nTraining/index: {}",
+            model_path.display(),
+            config_path.display(),
+            config.data.training_data_path
+        );
+        Ok(config)
+    };
+    let config =
+        load().map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
 
     let bind_address = format!("{}:{}", config.server.host, config.server.port);
     let m_most_recent_sessions = config.model.m_most_recent_sessions;
@@ -29,15 +71,17 @@ async fn main() -> std::io::Result<()> {
     let enable_business_logic = config.logic.enable_business_logic;
     let example_item_id = config.logic.example_item_id;
 
-    let vmis_index = Arc::new(
-        VMISIndex::load_for_model(
-            &config.data.training_data_path,
+    let mut index =
+        VMISIndex::load_corpus(&config.data.training_data_path, config.data.index_capacity)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+    index
+        .prepare_for_model(
             config.model.m_most_recent_sessions,
             config.model.idf_weighting,
             &config.model.knn,
         )
-        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?,
-    );
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+    let vmis_index = Arc::new(index);
     let knn = config.model.knn.clone();
 
     println!("start db");

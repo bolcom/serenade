@@ -18,44 +18,71 @@ VMIS-kNN — Scalable recommendation algorithm. An efficient adaptation of the s
 
 Serenade — Production recommendation system. A scalable, stateful recommendation service built around VMIS-kNN, combining real-time session management, low-latency recommendation serving, and efficient resource utilization. Originally deployed at bol.com, Serenade demonstrates that high-quality session-based nearest-neighbor recommendations can operate at industrial scale with low latency and modest computational resources.
 
-## Offline evaluation and optional benchmarking
+## Optimize, evaluate, serve
 
-**TPE hyperparameter optimization → Offline evaluation (with optional benchmarking) → Real-time serving**
+Download and extract a [release](https://github.com/bolcom/serenade/releases).
+Windows packages contain `.exe` files; Linux and macOS use the same names without
+`.exe` (prefix commands with `./`). The spelling `tpe_hyperparameter_optm` is intentional.
 
-Use existing application configurations or the TOML files exported by HPO:
+**1. Optimize**
 
-```sh
-cargo run --release --bin evaluator -- hpo-results/vmis.toml --output quality.csv
-cargo run --release --bin evaluator -- hpo-results/vmis.toml hpo-results/stan.toml --output comparison.csv
-cargo run --release --bin evaluator -- hpo-results --benchmark --workers 4 --warmup 1 --iterations 5 --snapshot-dir target/snapshots --output benchmark.csv
+```powershell
+.\tpe_hyperparameter_optm.exe --config workspace/hpo.toml
 ```
 
-A directory selects its TOML files in sorted order. Multiple configurations of the
-same algorithm are supported. `--algorithm all` compares all seven algorithms using
-the configuration's shared limits and the other algorithms' defaults. Quality-only
-evaluation is the default, with one parallel pass computing all eight metrics at 20.
-`--workers 0` uses available CPUs; otherwise the configuration's
-`hyperparam.evaluation_workers` applies. Configurations run sequentially; matching
-datasets and fixed capacities reuse one training index and evaluation dataset.
-`data.index_capacity` remains independent of model parameters; an excessive `m`
-is rejected before loading data.
+**2. Evaluate and optionally benchmark**
 
-The single CSV (default `evaluation-results.csv`) identifies each dataset and
-configuration, effective model parameters (`knn_` prefixes algorithm settings),
-workers and all quality metrics. Performance cells remain empty unless `--benchmark`
-is enabled. Benchmarking rebuilds the fixed-capacity index each iteration, measures
-single-worker prediction latency separately from parallel prediction throughput,
-and reports medians across measured iterations, excluding warm-ups. Defaults are
-one warm-up and three measured iterations. Latency percentiles are calculated per
-iteration before taking their medians. Quality is computed only once. Construction
-timing includes corpus loading and scoring preparation; OS caches are not flushed.
-Total evaluation wall time
-includes construction and performance passes, excluding the one-off quality pass
-and progress output. Snapshot serialization, loading and size are measured only
-with `--snapshot-dir`; the original index is released before loading its snapshot.
-Owned heap estimates exclude allocator overhead, transient scratch space and RSS.
-Progress goes to stderr outside measured sections. Short runs and Windows worker
-scaling are functional regression checks, not evidence of production scalability.
+```powershell
+.\evaluator.exe --model workspace/best-vmis.toml --model workspace/best-wsknn.toml --benchmark
+```
+
+**3. Serve**
+
+```powershell
+.\serving.exe --model workspace/best-vmis.toml --config workspace/serenade.toml
+```
+
+The release includes a ready-to-run `workspace/` with `train.txt`, `validation.txt`,
+`test.txt`, `hpo.toml`, and `serenade.toml`. A workspace is just a directory convention.
+HPO writes `best-<algorithm>.toml` for every enabled algorithm beside `hpo.toml`.
+These portable files contain only model parameters. HPO uses training and validation
+sessions; it never opens the test set. Trial diagnostics are optional (`save_records`).
+
+`hpo.toml` owns search spaces, objective/cutoff, trials, seed, evaluation workers and
+independent `[data] index_capacity`. `serenade.toml` owns host, port, worker count,
+business filters and independent index capacity. It contains no optimized parameters.
+The example server listens on port 8081.
+
+Dataset defaults follow the configuration: HPO finds training and validation data
+beside `hpo.toml`; evaluation finds training and test data beside the supplied models;
+serving finds training data beside its model, even when its serving configuration
+is in another directory. Config-file paths resolve relative to their containing
+file; CLI paths resolve relative to the current working directory. Absolute paths
+and quoted paths with spaces work, including on separate storage volumes.
+
+Evaluation accepts repeated `--model` arguments, including multiple versions of
+one algorithm. It writes `evaluation.csv`, or `benchmark.csv` with `--benchmark`,
+beside the models. Models from different directories require `--dataset-dir DIR`
+(which also sets the default output directory), or both `--train FILE --test FILE`
+and `--output FILE`. It never chooses the first model's dataset in that case.
+
+Advanced overrides: HPO accepts `--train`, `--validation`, `--output` (directory),
+`--algorithm`, and `--index-capacity`. Evaluation accepts `--dataset-dir`, `--train`,
+`--test`, `--output` (CSV), `--index-capacity`, `--workers`, and `--business-logic true|false`.
+Serving accepts `--train` or `--index`; `[data] training_data_path` and `index_path`
+in `serenade.toml` provide configuration-relative overrides. None requires copying
+production data. All three use independent index capacity 2500 by default and reject
+incompatible retrieval limits. Persisted indexes must already support that capacity.
+
+Quality evaluation preserves all eight metrics at 20, reusing matching training
+indexes and test data. Benchmarking preserves median aggregation, separate serial
+latency and parallel throughput, with `--iterations 5`, `--warmup 1`, and optional
+`--snapshot-dir DIR` for snapshot save/load measurements. HPO retains shared immutable
+data, objective-only parallel evaluation, reusable worker buffers and sequential TPE trials.
+
+For source builds, use `cargo run --release --bin NAME -- ARGS`. Extract
+`assets/example/example.zip` into `workspace/` for the same example workflow.
+See [configuration details](docs/CONFIG.md) and [data preparation](docs/Preparation.md).
 
 ## Performance at scale
 
@@ -104,124 +131,17 @@ The intended workflow is straightforward:
 
 Each optimized algorithm produces a single configuration file that can be used directly by both the evaluator and serving applications.
 
-## Quick start
+## Request recommendations
 
-### 1. Download Serenade
+After starting serving:
 
-Download the appropriate package from [GitHub Releases](https://github.com/bolcom/serenade/releases).
-
-| Platform | Package |
-| --- | --- |
-| Windows (x86_64) | ZIP |
-| Linux (x86_64) | tar.gz |
-| macOS (Intel) | tar.gz |
-| macOS (Apple Silicon) | tar.gz |
-
-Extract the archive and open a terminal in the extracted directory.
-
-The package includes the three executables (`tpe_hyperparameter_optm`, `evaluator`, and `serving`), example configurations, and a small example dataset.
-
-### 2. Optimize hyperparameters
-
-Edit `configs/hpo.toml` to choose which algorithms to optimize, the search ranges, and the evaluation objective.
-
-For example:
-
-```toml
-[hyperparam]
-objective = "ndcg@8"
-```
-
-HPO evaluates validation sessions in parallel while keeping TPE trials sequential.
-The training index and validation sessions are loaded once and shared by the workers;
-interactions within each session remain sequential. Only the selected objective is
-calculated during optimization, without latency collection or other quality metrics.
-
-Configure retrieval capacity independently of the search ranges:
-
-```toml
-[data]
-index_capacity = 2500
-
-[hyperparam]
-evaluation_workers = 0 # automatic CPU availability; use e.g. 4 to limit workers
-n_most_recent_sessions_range = [100, 2500]
-```
-
-`data.index_capacity` defaults to 2500. HPO rejects an `m` search upper bound
-above this capacity before loading data. It never grows or rebuilds the index to
-accommodate a trial. A supplied snapshot must already support the configured
-capacity. Smaller runtime `m` limits use the same immutable postings.
-The existing IDF representation is prepared once per algorithm; trial-specific
-weights are applied during scoring without rescanning the corpus. No additional
-corpus statistics maps are retained. Worker scratch allocations are reused across
-trials and depend on retrieval limits and session lengths, rather than the number
-of historical interactions. More workers can reach diminishing returns from
-memory bandwidth and scheduling overhead; measure representative runs when
-choosing an explicit worker count.
-
-All seven algorithms are enabled by default. Individual algorithms can be disabled in their configuration sections.
-
-Run TPE optimization:
-
-```bash
-./tpe_hyperparameter_optm configs/hpo.toml
-```
-
-Serenade optimizes the enabled algorithms and generates a configuration containing the best hyperparameters for each algorithm, for example:
-
-```text
-hpo-results/
-    vmis.toml
-    sknn.toml
-    ssknn.toml
-    wsknn.toml
-    vsknn.toml
-    stan.toml
-    vsknn_stan.toml
-```
-
-### 3. Evaluate an optimized algorithm
-
-Evaluate STAN using its generated configuration:
-
-```bash
-./evaluator hpo-results/stan.toml
-```
-
-The evaluator reports recommendation quality on the held-out test dataset.
-
-### 4. Serve recommendations
-
-Start the HTTP recommendation service using **the same configuration file**:
-
-```bash
-./serving hpo-results/stan.toml
-```
-
-Request recommendations:
-
-```bash
+```sh
 curl "http://localhost:8081/v1/recommend?item_id=13598&session_id=example&user_consent=true"
 ```
 
-Serenade returns a JSON array of recommended item IDs.
-
-On Windows, use the `.exe` applications with PowerShell, for example:
-
-```powershell
-.\tpe_hyperparameter_optm.exe configs/hpo.toml
-.\evaluator.exe hpo-results/stan.toml
-.\serving.exe hpo-results/stan.toml
-```
-
-Use `curl.exe` for the request in Windows PowerShell.
-
-The example paths are relative to the extracted package directory. The bundled `configs/hpo.toml` configures port **8081**, which is used throughout these examples. The serving port is configured in the generated TOML file.
-
-Open [http://localhost:8081/](http://localhost:8081/) in your browser to view Serenade's internal page while the service is running.
-
-Serenade exposes [Prometheus metrics](http://localhost:8081/internal/prometheus) out-of-the-box for monitoring.
+Use `curl.exe` in Windows PowerShell. The [internal page](http://localhost:8081/)
+and [Prometheus metrics](http://localhost:8081/internal/prometheus) are available
+while serving runs.
 
 ### 5. Retrieve recommendations using Python
 

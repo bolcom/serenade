@@ -16,7 +16,13 @@ fn main() -> Result<()> {
 fn run(args: Vec<String>) -> Result<()> {
     let mut paths = Vec::new();
     let (mut benchmark, mut iterations, mut warmup, mut workers) = (false, 3usize, 1usize, None);
-    let mut output = PathBuf::from("evaluation-results.csv");
+    let mut output_override = None;
+    let mut train_override = None;
+    let mut test_override = None;
+    let mut dataset = None;
+    let mut business = false;
+    let mut capacity = serenade::paths::DEFAULT_INDEX_CAPACITY;
+    let modern = args.iter().any(|a| a == "--model");
     let mut snapshot = None;
     let mut selection = None;
     let mut i = 0;
@@ -25,14 +31,21 @@ fn run(args: Vec<String>) -> Result<()> {
         match arg.as_str() {
             "--benchmark" => benchmark = true,
             "--iterations" | "--warmup" | "--workers" | "--output" | "--snapshot-dir"
-            | "--algorithm" => {
+            | "--algorithm" | "--model" | "--train" | "--test" | "--dataset-dir"
+            | "--index-capacity" | "--business-logic" => {
                 i += 1;
                 let value = args.get(i).context("missing option value")?;
                 match arg.as_str() {
                     "--iterations" => iterations = value.parse()?,
                     "--warmup" => warmup = value.parse()?,
                     "--workers" => workers = Some(value.parse::<usize>()?),
-                    "--output" => output = value.into(),
+                    "--output" => output_override = Some(PathBuf::from(value)),
+                    "--model" => paths.push(PathBuf::from(value)),
+                    "--train" => train_override = Some(PathBuf::from(value)),
+                    "--test" => test_override = Some(PathBuf::from(value)),
+                    "--dataset-dir" => dataset = Some(serenade::paths::absolute(value)?),
+                    "--index-capacity" => capacity = value.parse()?,
+                    "--business-logic" => business = value.parse()?,
                     "--snapshot-dir" => snapshot = Some(PathBuf::from(value)),
                     _ => selection = Some(value.clone()),
                 }
@@ -63,7 +76,7 @@ fn run(args: Vec<String>) -> Result<()> {
         }
         i += 1;
     }
-    ensure!(!paths.is_empty(), "usage: evaluator CONFIG...|DIRECTORY [--output FILE.csv] [--algorithm NAME|all] [--benchmark --iterations N --warmup N --snapshot-dir DIR] [--workers N]");
+    ensure!(!paths.is_empty(), "usage: evaluator --model FILE [--model FILE ...] [--dataset-dir DIR] [--train FILE --test FILE] [--index-capacity N] [--output FILE.csv] [--benchmark --iterations N --warmup N --snapshot-dir DIR] [--workers N]");
     ensure!(iterations > 0, "iterations must be positive");
     iterations
         .checked_add(warmup)
@@ -72,26 +85,79 @@ fn run(args: Vec<String>) -> Result<()> {
         benchmark || snapshot.is_none(),
         "--snapshot-dir requires --benchmark"
     );
+    let paths = paths
+        .iter()
+        .map(serenade::paths::input)
+        .collect::<Result<Vec<_>>>()?;
+    let common = paths.iter().all(|p| p.parent() == paths[0].parent());
+    if modern && !common {
+        ensure!(
+            dataset.is_some() || (train_override.is_some() && test_override.is_some()),
+            "models from different directories require --dataset-dir or both --train and --test"
+        );
+        ensure!(
+            output_override.is_some() || dataset.is_some(),
+            "models from different directories require --output when using --train and --test"
+        );
+    }
+    let base = dataset.as_deref().unwrap_or(paths[0].parent().unwrap());
+    let output = serenade::paths::absolute(output_override.unwrap_or_else(|| {
+        if modern {
+            base.join(if benchmark {
+                "benchmark.csv"
+            } else {
+                "evaluation.csv"
+            })
+        } else {
+            PathBuf::from("evaluation-results.csv")
+        }
+    }))?;
+    eprintln!("Output: {}", output.display());
     // Validate every configuration before loading any corpus or opening output.
     let mut jobs = Vec::new();
     for path in &paths {
-        let config = AppConfig::try_new(path.to_string_lossy().into_owned())?;
-        for model in offline::selected_models(&config.model, selection.as_deref())? {
-            ensure!(
-                model.m_most_recent_sessions <= config.data.index_capacity,
-                "{}: model m exceeds data.index_capacity",
+        if modern {
+            let model = serenade::config::load_model(path)?;
+            serenade::config::validate_model(&model, capacity)?;
+            let train = serenade::paths::corpus(
+                train_override
+                    .clone()
+                    .unwrap_or_else(|| base.join("train.txt")),
+            )?;
+            let test = serenade::paths::input(
+                test_override
+                    .clone()
+                    .unwrap_or_else(|| base.join("test.txt")),
+            )?;
+            eprintln!(
+                "Training: {}\nTest: {}\nModel: {}",
+                train.display(),
+                test.display(),
                 path.display()
             );
-            model.knn.validate().map_err(anyhow::Error::msg)?;
             jobs.push((
                 path.clone(),
-                config.data.training_data_path.clone(),
-                config.hyperparam.test_data_path.clone(),
-                config.data.index_capacity,
+                train.display().to_string(),
+                test.display().to_string(),
+                capacity,
                 model,
-                config.logic.enable_business_logic,
-                workers.unwrap_or(config.hyperparam.evaluation_workers),
+                business,
+                workers.unwrap_or(0),
             ));
+        } else {
+            let config = AppConfig::try_new(path.to_string_lossy().into_owned())?;
+            for model in offline::selected_models(&config.model, selection.as_deref())? {
+                serenade::config::validate_model(&model, config.data.index_capacity)?;
+                jobs.push((
+                    path.clone(),
+                    config.data.training_data_path.clone(),
+                    config.hyperparam.test_data_path.clone(),
+                    config.data.index_capacity,
+                    model,
+                    config.logic.enable_business_logic,
+                    workers.unwrap_or(config.hyperparam.evaluation_workers),
+                ));
+            }
         }
     }
     // Group equal datasets/capacities to reuse one corpus and one evaluation dataset.

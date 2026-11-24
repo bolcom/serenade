@@ -14,64 +14,69 @@ macOS executables are unsigned and unnotarized. RocksDB is included in the execu
 
 Optionally verify the archive against its accompanying `.sha256` file using `sha256sum -c ARCHIVE.sha256` on Linux, `shasum -a 256 -c ARCHIVE.sha256` on macOS, or `Get-FileHash .\ARCHIVE.zip -Algorithm SHA256` in PowerShell.
 
-## Optimize, evaluate, serve
 
-Run from the extracted package directory so relative dataset paths resolve correctly:
+## Workflow
 
-```sh
-./tpe_hyperparameter_optm configs/hpo.toml
-./evaluator hpo-results/stan.toml
-./serving hpo-results/stan.toml
-```
+Download and extract a [release](https://github.com/bolcom/serenade/releases).
+Windows packages contain `.exe` files; Linux and macOS use the same names without
+`.exe` (prefix commands with `./`). The spelling `tpe_hyperparameter_optm` is intentional.
 
-In Windows PowerShell:
+**1. Optimize**
 
 ```powershell
-.\tpe_hyperparameter_optm.exe configs/hpo.toml
-.\evaluator.exe hpo-results/stan.toml
-.\serving.exe hpo-results/stan.toml
+.\tpe_hyperparameter_optm.exe --config workspace/hpo.toml
 ```
 
-The default HPO configuration runs 50 trials for each of the seven algorithms. Edit dataset paths, trial budget, objective, and algorithm ranges in `configs/hpo.toml`; see [Configuration](CONFIG.md). Training and validation select the best settings; test data is used only for evaluation.
+**2. Evaluate and optionally benchmark**
 
-HPO writes one complete `ALGORITHM.toml` per enabled algorithm to `hpo-results`, plus trial and comparison reports. The same TOML works for evaluation and serving. Choose the algorithm using validation results before evaluating its held-out test performance.
-
-To optimize only STAN, append `stan` to the HPO command. To evaluate every generated configuration, run `./evaluator hpo-results` (PowerShell: `.\evaluator.exe hpo-results`). Evaluation writes one `evaluation-results.csv` for the entire run, including all eight quality metrics and effective parameters. Use a fresh output directory when changing the enabled algorithms, because reruns leave older algorithms' files in place.
-
-Use `./evaluator hpo-results --benchmark --workers 4 --warmup 1 --iterations 3 --output benchmark.csv` for optional performance measurements. Add `--snapshot-dir snapshots` to measure serialization and loading. Benchmark columns report medians excluding warm-ups; prediction latency uses one worker and throughput uses the selected worker count. Without benchmarking, performance cells are empty.
-
-The evaluator reports all eight quality metrics at 20. HPO uses the cutoff in its configured objective; the serving response length is controlled separately by `model.num_items_to_recommend`.
-
-## Request recommendations
-
-Both example configurations use port **8081**:
-
-```sh
-curl "http://localhost:8081/v1/recommend?item_id=13598&session_id=example&user_consent=true"
+```powershell
+.\evaluator.exe --model workspace/best-vmis.toml --model workspace/best-wsknn.toml --benchmark
 ```
 
-Use `curl.exe` in Windows PowerShell. The response is a JSON array of recommended item IDs. Reuse a session ID to build its click history.
+**3. Serve**
 
-Open [the internal page](http://localhost:8081/) to inspect the running service. [Prometheus metrics](http://localhost:8081/internal/prometheus) are available for monitoring. Stop serving with Ctrl+C.
+```powershell
+.\serving.exe --model workspace/best-vmis.toml --config workspace/serenade.toml
+```
 
-Run from a writable directory: HPO and evaluation write reports, and serving creates `sessions.db`. If startup fails, check the dataset paths and whether port 8081 is already in use. See [Data preparation](Preparation.md) to use your own interactions.
+The release includes a ready-to-run `workspace/` with `train.txt`, `validation.txt`,
+`test.txt`, `hpo.toml`, and `serenade.toml`. A workspace is just a directory convention.
+HPO writes `best-<algorithm>.toml` for every enabled algorithm beside `hpo.toml`.
+These portable files contain only model parameters. HPO uses training and validation
+sessions; it never opens the test set. Trial diagnostics are optional (`save_records`).
 
-## Example archive in the source repository
+`hpo.toml` owns search spaces, objective/cutoff, trials, seed, evaluation workers and
+independent `[data] index_capacity`. `serenade.toml` owns host, port, worker count,
+business filters and independent index capacity. It contains no optimized parameters.
+The example server listens on port 8081.
 
-`assets/example` contains only `example.zip`, with `hpo.toml`, `train.txt`, `valid.txt`, and `test.txt`. Binary packages already include these extracted files. For a source checkout, extract the three datasets into `assets/example`, place the archived `hpo.toml` at `configs/hpo.toml`, and run commands from the repository root. This ZIP is the single source of the example configuration; packaging installs it at `configs/hpo.toml`. The archived configuration uses port **8081** and paths relative to that root.
+Dataset defaults follow the configuration: HPO finds training and validation data
+beside `hpo.toml`; evaluation finds training and test data beside the supplied models;
+serving finds training data beside its model, even when its serving configuration
+is in another directory. Config-file paths resolve relative to their containing
+file; CLI paths resolve relative to the current working directory. Absolute paths
+and quoted paths with spaces work, including on separate storage volumes.
 
-## Publishing a new version
+Evaluation accepts repeated `--model` arguments, including multiple versions of
+one algorithm. It writes `evaluation.csv`, or `benchmark.csv` with `--benchmark`,
+beside the models. Models from different directories require `--dataset-dir DIR`
+(which also sets the default output directory), or both `--train FILE --test FILE`
+and `--output FILE`. It never chooses the first model's dataset in that case.
 
-Open a non-draft PR into `main` from a branch in this repository, update it
-with the latest `main`, then click **Enable auto-merge**. The workflow automatically
-increments the app version in both Cargo files, builds and tests all four
-platforms, merges to `main`, and deploys those binaries to GitHub Releases.
-An explicit version increase is preserved.
+Advanced overrides: HPO accepts `--train`, `--validation`, `--output` (directory),
+`--algorithm`, and `--index-capacity`. Evaluation accepts `--dataset-dir`, `--train`,
+`--test`, `--output` (CSV), `--index-capacity`, `--workers`, and `--business-logic true|false`.
+Serving accepts `--train` or `--index`; `[data] training_data_path` and `index_path`
+in `serenade.toml` provide configuration-relative overrides. None requires copying
+production data. All three use independent index capacity 2500 by default and reject
+incompatible retrieval limits. Persisted indexes must already support that capacity.
 
-For small changes, check **Skip version bump, binary builds and release; merge
-changes only** in the PR description before enabling auto-merge.
+Quality evaluation preserves all eight metrics at 20, reusing matching training
+indexes and test data. Benchmarking preserves median aggregation, separate serial
+latency and parallel throughput, with `--iterations 5`, `--warmup 1`, and optional
+`--snapshot-dir DIR` for snapshot save/load measurements. HPO retains shared immutable
+data, objective-only parallel evaluation, reusable worker buffers and sequential TPE trials.
 
-This is the only workflow. Required reviews and checks still apply. A repository
-admin must enable auto-merge and require `release-binaries` on `main` so GitHub
-waits for the workflow. See [merge and release instructions](../scripts/README.md#merge-a-pr)
-for setup and retries.
+For source builds, use `cargo run --release --bin NAME -- ARGS`. Extract
+`assets/example/example.zip` into `workspace/` for the same example workflow.
+See [configuration details](CONFIG.md) and [data preparation](Preparation.md).

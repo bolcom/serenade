@@ -228,7 +228,7 @@ fn capacity_rejected_before_data_loading_and_inputs_protected() {
         .output()
         .unwrap();
     assert!(!result.status.success());
-    assert!(String::from_utf8_lossy(&result.stderr).contains("exceeds data.index_capacity"));
+    assert!(String::from_utf8_lossy(&result.stderr).contains("exceeds index capacity"));
     assert!(!output.exists());
     let f = Fixture::new();
     let config = f.config("good.toml", Algorithm::Vmis, 5);

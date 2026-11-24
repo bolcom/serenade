@@ -1,7 +1,6 @@
 //! Small end-to-end runs check shared objectives, best-trial reporting and generated configs.
 use serde_json::Value;
 use serenade::{
-    config::AppConfig,
     metrics::objective::Objective,
     offline::{self, EvaluationData},
     vmisknn::vmis_index::VMISIndex,
@@ -100,19 +99,14 @@ fn all_algorithms_optimize_selected_metric_and_generate_usable_models() {
                     .collect();
             assert_eq!(&records, trials);
             // Both serving and evaluator use this same loader and model contract.
-            let model = AppConfig::try_new(
-                output
-                    .join(format!("{algorithm}.toml"))
-                    .to_string_lossy()
-                    .into_owned(),
-            )
-            .unwrap();
-            assert_eq!(model.hyperparam.objective, objective);
-            assert_eq!(model.model.num_items_to_recommend, 37);
+            let model =
+                serenade::config::load_model(&output.join(format!("best-{algorithm}.toml")))
+                    .unwrap();
+            assert_eq!(model.num_items_to_recommend, 37);
             for trial in trials {
                 assert_eq!(trial["validation_metrics"].as_object().unwrap().len(), 2);
             }
-            let selected = serde_json::to_value(&model.model.knn).unwrap();
+            let selected = serde_json::to_value(&model.knn).unwrap();
             for (name, choices) in result["optimization"]["choices"].as_object().unwrap() {
                 assert_eq!(selected[name], best["hyperparameters"][name]);
                 for trial in trials {
@@ -124,17 +118,17 @@ fn all_algorithms_optimize_selected_metric_and_generate_usable_models() {
             }
 
             let index = VMISIndex::load_for_model(
-                &model.data.training_data_path,
-                model.model.m_most_recent_sessions,
-                model.model.idf_weighting,
-                &model.model.knn,
+                train.to_str().unwrap(),
+                model.m_most_recent_sessions,
+                model.idf_weighting,
+                &model.knn,
             )
             .unwrap();
-            let validation = EvaluationData::load(&model.hyperparam.validation_data_path).unwrap();
+            let validation = EvaluationData::load(holdout.to_str().unwrap()).unwrap();
             let reproduced = offline::evaluate_at_cutoff(
                 &index,
                 &validation,
-                &model.model,
+                &model,
                 false,
                 std::num::NonZeroUsize::new(objective.cutoff()).unwrap(),
             );
@@ -144,8 +138,18 @@ fn all_algorithms_optimize_selected_metric_and_generate_usable_models() {
             );
         }
         let csv_path = output.join("evaluation.csv");
-        run(Command::new(env!("CARGO_BIN_EXE_evaluator"))
-            .arg(&output)
+        let mut evaluation = Command::new(env!("CARGO_BIN_EXE_evaluator"));
+        for result in results {
+            evaluation.arg("--model").arg(output.join(format!(
+                "best-{}.toml",
+                result["algorithm"].as_str().unwrap()
+            )));
+        }
+        run(evaluation
+            .arg("--train")
+            .arg(&train)
+            .arg("--test")
+            .arg(&holdout)
             .arg("--output")
             .arg(&csv_path));
         let mut reader = csv::Reader::from_path(csv_path).unwrap();

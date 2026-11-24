@@ -34,7 +34,7 @@ class PackageReleaseTest(unittest.TestCase):
             examples = root / "assets/example"
             examples.mkdir(parents=True)
             with zipfile.ZipFile(examples / "example.zip", "w") as archive:
-                for name in ("hpo.toml", "train.txt", "test.txt", "valid.txt"):
+                for name in ("hpo.toml", "serenade.toml", "train.txt", "test.txt", "validation.txt"):
                     archive.writestr(name, "fixture\n")
             (root / "docs").mkdir()
             for name in ("BINARIES.md", "CONFIG.md", "Preparation.md"):
@@ -57,6 +57,7 @@ class PackageReleaseTest(unittest.TestCase):
                     names = release.namelist() if suffix else release.getnames()
                     self.assertEqual(sorted(Path(n).name for n in names if Path(n).name in package_release.BINS or n.endswith(".exe")), sorted(name + suffix for name in package_release.BINS))
                     self.assertFalse(any("knn_benchmark" in n for n in names))
+                    self.assertTrue(all(f"{package_name}/workspace/{name}" in names for name in ("hpo.toml", "serenade.toml", "train.txt", "validation.txt", "test.txt")))
                     for name, content in licenses.items():
                         self.assertEqual(release.read(f"{package_name}/{name}"), content)
             else:
@@ -64,6 +65,7 @@ class PackageReleaseTest(unittest.TestCase):
                     names = release.namelist() if suffix else release.getnames()
                     self.assertEqual(sorted(Path(n).name for n in names if Path(n).name in package_release.BINS or n.endswith(".exe")), sorted(name + suffix for name in package_release.BINS))
                     self.assertFalse(any("knn_benchmark" in n for n in names))
+                    self.assertTrue(all(f"{package_name}/workspace/{name}" in names for name in ("hpo.toml", "serenade.toml", "train.txt", "validation.txt", "test.txt")))
                     for name, content in licenses.items():
                         with release.extractfile(f"{package_name}/{name}") as license_file:
                             self.assertEqual(license_file.read(), content)
