@@ -167,7 +167,7 @@ comma-separated next-item IDs: `10,20,30;20,40`. Empty recommendation lists and
 trailing commas are accepted; next-item lists must contain at least one ID.
 This mode prints the evaluation count and all fifteen metrics at 20 as CSV to stdout.
 Malformed prediction rows fail with the filename and line number.
-See [metric definitions and RecBole compatibility](docs/METRICS.md) for the new metrics and HPO directions.
+See [metric definitions](docs/METRICS.md) for the new metrics and HPO directions.
 These commands replace the former `build_index` and `evaluate_file` executables.
 
 ## Supported evaluation metrics
@@ -192,7 +192,7 @@ The evaluator reports all metrics below at K=20; K is the maximum number of reco
 | EmptyResultRate@K | Measures the fraction of prediction cases that return no recommendations, highlighting failures to produce results. |
 | FillRate@K | Measures the fraction of K recommendation slots filled with distinct items, highlighting incomplete result lists. |
 
-See [metric definitions and RecBole compatibility](docs/METRICS.md) for formulas, edge cases and supported HPO objectives.
+See [metric definitions](docs/METRICS.md) for formulas, edge cases and supported HPO objectives.
 
 ## Research and citation
 
