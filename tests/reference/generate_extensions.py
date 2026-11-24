@@ -1,6 +1,6 @@
 """Execute pinned upstream methods without installing their optional dependencies.
 
-Sources: target/reference-upstream; see docs/session-knn-validation.md.
+Sources: target/reference-upstream; fetch with download_extensions.py.
 Run from repository root: python tests/reference/generate_extensions.py
 """
 import ast

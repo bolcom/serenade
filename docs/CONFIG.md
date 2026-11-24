@@ -118,4 +118,4 @@ S-SKNN defaults: `similarity = "jaccard"`, `weighting = "div"`, `remind = false`
 
 WSKNN defaults: `similarity = "vec"` (required), `weighting = "linear"`, `weighting_score = "linear"`, `remind = true`, `normalize = false`. `div` (alias `inv`) is inverse-distance ranking. Only the documented WSKNN weighting choices above are supported. Event age weighting and alternative sampling are not added. `remind = false` removes current-session items before the shared serving filters. Chronological repeated training events are required: CSV and current `.vmis` snapshots support them; legacy Avro indexes must be rebuilt. S-SKNN can use legacy set-based snapshots.
 
-All seven algorithms use the same evaluator, serving configuration and business filters. See [validation](session-knn-validation.md) for formulas, source pins, accuracy and scalability results.
+All seven algorithms use the same evaluator, serving configuration and business filters.

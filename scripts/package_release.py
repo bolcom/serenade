@@ -155,11 +155,6 @@ def main():
             )
         shutil.copy2(ROOT / "LICENSE.md", staging / "LICENSE.md")
         shutil.copytree(ROOT / "docs/third-party", staging / "docs/third-party")
-        shutil.copytree(ROOT / "docs/validation", staging / "docs/validation")
-        (staging / "session-knn-validation.md").write_text(
-            (ROOT / "docs/session-knn-validation.md").read_text(encoding="utf-8")
-            .replace("(third-party/", "(docs/third-party/")
-            .replace("(validation/", "(docs/validation/"), encoding="utf-8")
         expected = {p.relative_to(staging).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                     for p in staging.rglob("*") if p.is_file()}
         archive = dist / (name + (".zip" if suffix else ".tar.gz"))

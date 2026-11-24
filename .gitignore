@@ -43,6 +43,3 @@ Serenade-*.tar.gz
 !/tests/reference/generate_extensions.py
 !/tests/reference/evaluate_extensions.py
 !/tests/reference/download_extensions.py
-
-# Recorded validation measurements.
-!/docs/validation/*.csv

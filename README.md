@@ -63,7 +63,7 @@ Building on the original VMIS-kNN research, **we extend Serenade with scalable a
 
 **Our contribution is to make these established algorithms scalable by adapting their neighbor retrieval to VMIS-kNN's bounded, recency-ordered index and early-stopping strategy**, while preserving each algorithm's distinctive scoring method. With fixed retrieval limits, query-time neighbor retrieval scales with the length of the active session rather than the size of the historical session corpus, enabling these algorithms to benefit from VMIS-kNN's scalability.
 
-`VMISIndex` is the shared indexing infrastructure; VMIS-kNN is the original algorithm, and Serenade is the system that executes all seven algorithms. Only recent candidate sampling is supported. S-SKNN reuses SKNN neighbors and weights their item contributions by the latest shared current-session event. WSKNN weights current-session positions and neighbor contributions, retaining repeated historical events. See [configuration](docs/CONFIG.md) and the [reference accuracy and scalability report](docs/session-knn-validation.md) for supported settings, implementation differences and measurements.
+`VMISIndex` is the shared indexing infrastructure; VMIS-kNN is the original algorithm, and Serenade is the system that executes all seven algorithms. Only recent candidate sampling is supported. S-SKNN reuses SKNN neighbors and weights their item contributions by the latest shared current-session event. WSKNN weights current-session positions and neighbor contributions, retaining repeated historical events. See [configuration](docs/CONFIG.md) for supported settings and implementation differences.
 
 ## What Serenade offers
 
