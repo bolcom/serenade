@@ -33,7 +33,7 @@ Windows packages contain `.exe` files; Linux and macOS use the same names withou
 **2. Evaluate and optionally benchmark**
 
 ```powershell
-.\evaluator.exe --model workspace/best-vmis.toml --model workspace/best-wsknn.toml --benchmark
+.\evaluator.exe --model workspace/best-vmis.toml --model workspace/best-sknn.toml --model workspace/best-ssknn.toml --model workspace/best-wsknn.toml --model workspace/best-vsknn.toml --model workspace/best-stan.toml --model workspace/best-vsknn_stan.toml --benchmark
 ```
 
 **3. Serve**
@@ -41,47 +41,6 @@ Windows packages contain `.exe` files; Linux and macOS use the same names withou
 ```powershell
 .\serving.exe --model workspace/best-vmis.toml --config workspace/serenade.toml
 ```
-
-The release includes a ready-to-run `workspace/` with `train.txt`, `validation.txt`,
-`test.txt`, `hpo.toml`, and `serenade.toml`. A workspace is just a directory convention.
-HPO writes `best-<algorithm>.toml` for every enabled algorithm beside `hpo.toml`.
-These portable files contain only model parameters. HPO uses training and validation
-sessions; it never opens the test set. Trial diagnostics are optional (`save_records`).
-
-`hpo.toml` owns search spaces, objective/cutoff, trials, seed, evaluation workers and
-independent `[data] index_capacity`. `serenade.toml` owns host, port, worker count,
-business filters and independent index capacity. It contains no optimized parameters.
-The example server listens on port 8081.
-
-Dataset defaults follow the configuration: HPO finds training and validation data
-beside `hpo.toml`; evaluation finds training and test data beside the supplied models;
-serving finds training data beside its model, even when its serving configuration
-is in another directory. Config-file paths resolve relative to their containing
-file; CLI paths resolve relative to the current working directory. Absolute paths
-and quoted paths with spaces work, including on separate storage volumes.
-
-Evaluation accepts repeated `--model` arguments, including multiple versions of
-one algorithm. It writes `evaluation.csv`, or `benchmark.csv` with `--benchmark`,
-beside the models. Models from different directories require `--dataset-dir DIR`
-(which also sets the default output directory), or both `--train FILE --test FILE`
-and `--output FILE`. It never chooses the first model's dataset in that case.
-
-Advanced overrides: HPO accepts `--train`, `--validation`, `--output` (directory),
-`--algorithm`, and `--index-capacity`. Evaluation accepts `--dataset-dir`, `--train`,
-`--test`, `--output` (CSV), `--index-capacity`, `--workers`, and `--business-logic true|false`.
-Serving accepts `--train` or `--index`; `[data] training_data_path` and `index_path`
-in `serenade.toml` provide configuration-relative overrides. None requires copying
-production data. All three use independent index capacity 2500 by default and reject
-incompatible retrieval limits. Persisted indexes must already support that capacity.
-
-Quality evaluation preserves all eight metrics at 20, reusing matching training
-indexes and test data. Benchmarking preserves median aggregation, separate serial
-latency and parallel throughput, with `--iterations 5`, `--warmup 1`, and optional
-`--snapshot-dir DIR` for snapshot save/load measurements. HPO retains shared immutable
-data, objective-only parallel evaluation, reusable worker buffers and sequential TPE trials.
-
-For source builds, use `cargo run --release --bin NAME -- ARGS`. Extract
-`assets/example/example.zip` into `workspace/` for the same example workflow.
 See [configuration details](docs/CONFIG.md) and [data preparation](docs/Preparation.md).
 
 ## Performance at scale
