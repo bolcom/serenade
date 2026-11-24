@@ -15,6 +15,7 @@ import urllib.request
 import zipfile
 
 BINS = ("serving", "evaluator", "tpe_hyperparameter_optm")
+LICENSES = ("LICENSE.md", "docs/third-party/wsknn-LICENSE.md")
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -153,8 +154,10 @@ def main():
                 (ROOT / "docs" / guide).read_text(encoding="utf-8-sig").replace("(BINARIES.md)", "(README.md)"),
                 encoding="utf-8",
             )
-        shutil.copy2(ROOT / "LICENSE.md", staging / "LICENSE.md")
-        shutil.copytree(ROOT / "docs/third-party", staging / "docs/third-party")
+        for license_path in LICENSES:
+            destination = staging / license_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / license_path, destination)
         expected = {p.relative_to(staging).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                     for p in staging.rglob("*") if p.is_file()}
         archive = dist / (name + (".zip" if suffix else ".tar.gz"))
