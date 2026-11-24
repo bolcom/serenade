@@ -5,17 +5,35 @@ use std::{
     process::{Command, Output},
 };
 
+fn fixture_root(timestamp: u128) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    std::env::temp_dir().join(format!(
+        "serenade workspace {}-{timestamp}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ))
+}
+
+#[test]
+fn simultaneous_fixture_names_are_unique() {
+    // A clock tick may be shared by multiple tests, even with nanosecond units.
+    let paths: std::collections::HashSet<_> = std::thread::scope(|scope| {
+        let threads: Vec<_> = (0..16).map(|_| scope.spawn(|| fixture_root(123))).collect();
+        threads.into_iter().map(|t| t.join().unwrap()).collect()
+    });
+    assert_eq!(paths.len(), 16);
+}
+
 struct Fixture(PathBuf);
 impl Fixture {
     fn new() -> Self {
-        let root = std::env::temp_dir().join(format!(
-            "serenade workspace {}-{}",
-            std::process::id(),
+        let root = fixture_root(
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
-        ));
+                .as_nanos(),
+        );
         std::fs::create_dir_all(root.join("workspace")).unwrap();
         std::fs::create_dir_all(root.join("deployment")).unwrap();
         let events = "SessionId\tItemId\tTime\n1\t10\t100\n1\t20\t101\n1\t30\t102\n2\t20\t110\n2\t40\t111\n3\t30\t112\n3\t40\t113\n";
@@ -50,7 +68,11 @@ impl Fixture {
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
-        std::fs::remove_dir_all(&self.0).unwrap();
+        let result = std::fs::remove_dir_all(&self.0);
+        // Preserve the original test failure instead of aborting on a double panic.
+        if !std::thread::panicking() {
+            result.unwrap();
+        }
     }
 }
 fn rows(path: &Path) -> usize {

@@ -10,13 +10,16 @@ use std::{path::PathBuf, process::Command, sync::Mutex};
 struct Fixture(PathBuf);
 impl Fixture {
     fn new() -> Self {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
         let root = std::env::temp_dir().join(format!(
-            "serenade-unified-{}-{}",
+            "serenade-unified-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join("train.tsv"),"SessionId\tItemId\tTime\n1\t10\t100\n1\t20\t101\n1\t10\t102\n1\t30\t103\n2\t20\t110\n2\t40\t111\n3\t30\t112\n3\t40\t113\n").unwrap();
@@ -64,7 +67,10 @@ impl Fixture {
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
-        std::fs::remove_dir_all(&self.0).unwrap();
+        let result = std::fs::remove_dir_all(&self.0);
+        if !std::thread::panicking() {
+            result.unwrap();
+        }
     }
 }
 const METRICS: [&str; 8] = [
