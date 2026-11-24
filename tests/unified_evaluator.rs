@@ -67,23 +67,38 @@ impl Fixture {
                     .collect()
             })
             .collect();
-        for row in &rows {
-            for (name, value) in row {
-                if name.contains('@')
-                    || (flags.contains(&"--benchmark") && name.ends_with("_median"))
-                {
-                    let expected = if value.is_empty() { "n/a" } else { value };
-                    assert!(
-                        console.lines().any(|line| line.split_whitespace().next()
-                            == Some(name.as_str())
-                            && line.split_whitespace().nth(if name.ends_with("_median") {
-                                2
-                            } else {
-                                1
-                            }) == Some(expected)),
-                        "missing {name} = {expected}"
-                    );
-                }
+        let quality = console.split("Recommendation quality\n").nth(1).unwrap();
+        let quality_rows: Vec<_> = quality.lines().skip(2).take(rows.len()).collect();
+        assert_eq!(quality_rows.len(), rows.len());
+        for (row, line) in rows.iter().zip(quality_rows) {
+            let cells: Vec<_> = line.split_whitespace().collect();
+            assert_eq!(cells[0], row["configuration_id"]);
+            assert_eq!(cells[1], row["algorithm"]);
+            for (i, name) in METRICS.iter().enumerate() {
+                assert_eq!(
+                    cells[i + 3],
+                    format!("{:.4}", row[*name].parse::<f64>().unwrap())
+                );
+            }
+        }
+        assert_eq!(console.matches("Quality: unitless").count(), 1);
+        assert_eq!(console.matches("Dataset 1:").count(), 1);
+        if flags.contains(&"--benchmark") {
+            assert_eq!(console.matches("Benchmark: medians").count(), 1);
+            for heading in [
+                "p50 (ms)",
+                "p90 (ms)",
+                "p95 (ms)",
+                "p99 (ms)",
+                "Predictions/s",
+                "Wall (ms)",
+                "Build (ms)",
+                "Heap est. (bytes)",
+                "Save (ms)",
+                "Load (ms)",
+                "Snapshot (bytes)",
+            ] {
+                assert!(console.contains(heading), "missing {heading}");
             }
         }
         rows

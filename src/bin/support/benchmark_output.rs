@@ -165,54 +165,111 @@ pub fn table(headers: &[&str], rows: &[Vec<String>]) -> String {
     lines.join("\n")
 }
 
-pub fn print_result(row: &Row, benchmark: bool) {
-    println!(
-        "\nResult {}: {} ({} predictions)",
-        row["configuration_id"], row["algorithm"], row["predictions"]
-    );
-    println!("Quality: mean over prediction cases; Coverage is distinct recommended items / distinct training items.");
-    let quality: Vec<_> = row
-        .iter()
-        .filter(|(name, _)| name.contains('@'))
-        .map(|(name, value)| vec![name.clone(), value.clone()])
-        .collect();
-    println!(
-        "{}",
-        table(&["Quality metric", "Value (unitless)"], &quality)
-    );
-    if benchmark {
-        println!(
-            "\nPerformance: median across {} measured iterations; {} warmup iterations excluded.",
-            row["measured_iterations"], row["warmup_iterations"]
-        );
-        println!("Latency percentiles are computed per iteration before taking medians; throughput uses {} workers.", row["evaluation_workers"]);
-        let performance: Vec<_> = row
+/// Console presentation of the same full-precision rows written to CSV.
+pub fn result_tables(rows: &[Row], benchmark: bool) -> String {
+    let Some(first) = rows.first() else {
+        return String::new();
+    };
+    let mut sections = Vec::new();
+    let mut datasets = Vec::new();
+    for row in rows {
+        let dataset = (&row["training_path"], &row["dataset"]);
+        if !datasets.contains(&dataset) {
+            datasets.push(dataset);
+        }
+    }
+    for (i, (train, test)) in datasets.iter().enumerate() {
+        sections.push(format!(
+            "Dataset {}: training {}\n           test {}",
+            i + 1,
+            serenade::paths::display(train),
+            serenade::paths::display(test)
+        ));
+    }
+    for row in rows {
+        let dataset = datasets
             .iter()
-            .filter(|(name, _)| name.ends_with("_median"))
-            .map(|(name, value)| {
-                vec![
-                    name.clone(),
-                    if name.contains("_ms_") {
-                        "ms"
-                    } else if name.contains("_bytes_") {
-                        "bytes"
-                    } else {
-                        "predictions/s"
-                    }
-                    .into(),
+            .position(|d| *d == (&row["training_path"], &row["dataset"]))
+            .unwrap()
+            + 1;
+        sections.push(format!(
+            "Model {}: {} (dataset {})",
+            row["configuration_id"],
+            serenade::paths::display(&row["configuration"]),
+            dataset
+        ));
+    }
+    sections.push("Quality: unitless means over prediction cases; Coverage = distinct recommended items / distinct training items.".into());
+    let render = |title: &str, specs: &[(&str, &str, usize)]| {
+        let mut headers = vec!["Model", "Algorithm"];
+        headers.extend(specs.iter().map(|s| s.1));
+        let cells: Vec<_> = rows
+            .iter()
+            .map(|row| {
+                let mut cells = vec![row["configuration_id"].clone(), row["algorithm"].clone()];
+                cells.extend(specs.iter().map(|(key, _, precision)| {
+                    let value = &row[*key];
                     if value.is_empty() {
                         "n/a".into()
+                    } else if let Ok(value) = value.parse::<f64>() {
+                        format!("{value:.precision$}")
                     } else {
                         value.clone()
-                    },
-                ]
+                    }
+                }));
+                cells
             })
             .collect();
-        println!(
-            "{}",
-            table(&["Performance metric", "Unit", "Value"], &performance)
-        );
+        format!("{title}\n{}", table(&headers, &cells))
+    };
+    sections.push(render(
+        "Recommendation quality",
+        &[
+            ("predictions", "Cases", 0),
+            ("MRR@20", "MRR@20", 4),
+            ("NDCG@20", "NDCG@20", 4),
+            ("HitRate@20", "HitRate@20", 4),
+            ("Popularity@20", "Popularity@20", 4),
+            ("Precision@20", "Precision@20", 4),
+            ("Coverage@20", "Coverage@20", 4),
+            ("Recall@20", "Recall@20", 4),
+            ("F1@20", "F1@20", 4),
+        ],
+    ));
+    if benchmark {
+        sections.push(format!("Benchmark: medians across {} measured iterations; {} warmup iterations excluded.\nLatency percentiles use a serial prediction pass per iteration before taking medians; throughput uses the listed workers. n/a = not measured.", first["measured_iterations"], first["warmup_iterations"]));
+        sections.push(render(
+            "Performance",
+            &[
+                ("evaluation_workers", "Workers", 0),
+                ("prediction_latency_p50_ms_median", "p50 (ms)", 4),
+                ("prediction_latency_p90_ms_median", "p90 (ms)", 4),
+                ("prediction_latency_p95_ms_median", "p95 (ms)", 4),
+                ("prediction_latency_p99_ms_median", "p99 (ms)", 4),
+                (
+                    "prediction_throughput_predictions_per_second_median",
+                    "Predictions/s",
+                    1,
+                ),
+                ("total_evaluation_wall_ms_median", "Wall (ms)", 2),
+            ],
+        ));
+        sections.push(render(
+            "Index and persistence",
+            &[
+                ("index_build_ms_median", "Build (ms)", 2),
+                (
+                    "index_owned_heap_estimate_bytes_median",
+                    "Heap est. (bytes)",
+                    0,
+                ),
+                ("snapshot_save_ms_median", "Save (ms)", 2),
+                ("snapshot_load_ms_median", "Load (ms)", 2),
+                ("snapshot_size_bytes_median", "Snapshot (bytes)", 0),
+            ],
+        ));
     }
+    sections.join("\n\n")
 }
 
 #[cfg(test)]

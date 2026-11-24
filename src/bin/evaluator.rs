@@ -202,6 +202,7 @@ fn run(args: Vec<String>) -> Result<()> {
     }
     let mut writer = csv::Writer::from_path(&output)?;
     let mut columns = None;
+    let mut results = Vec::new();
     let mut cached_corpus = None;
     let mut cached_data = None;
     let mut corpus = None;
@@ -210,19 +211,16 @@ fn run(args: Vec<String>) -> Result<()> {
         jobs.into_iter().enumerate()
     {
         eprintln!(
-            "Evaluating {}: {} ({})",
+            "Evaluating model {}: {}",
             job_id + 1,
-            model.knn.algorithm.name(),
-            serenade::paths::display(&path)
+            model.knn.algorithm.name()
         );
         let key = (train.clone(), capacity);
         if cached_data.as_ref() != Some(&test) {
-            eprintln!("Test: {}", serenade::paths::display(&test));
             data = Some(EvaluationData::load(&test)?);
             cached_data = Some(test.clone());
         }
         if cached_corpus.as_ref() != Some(&key) {
-            eprintln!("Training: {}", serenade::paths::display(&train));
             drop(corpus.take()); // Drop the previous corpus before loading another.
             if !benchmark {
                 corpus =
@@ -406,8 +404,9 @@ fn run(args: Vec<String>) -> Result<()> {
             row.insert(format!("{name}_median"), number(value));
         }
         write_row(&mut writer, &mut columns, &row)?;
-        output::print_result(&row, benchmark);
+        results.push(row);
     }
+    println!("{}", output::result_tables(&results, benchmark));
     eprintln!("Results: {}", serenade::paths::display(&output));
     Ok(())
 }
