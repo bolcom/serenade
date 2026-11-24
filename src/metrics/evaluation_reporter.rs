@@ -22,6 +22,21 @@ pub struct EvaluationReporter {
 }
 
 impl EvaluationReporter {
+    /// Full-precision values in MRR, NDCG, hit rate, popularity, precision,
+    /// coverage, recall, F1 order. Formatting is the caller's responsibility.
+    pub fn all_scores(&self) -> [f64; 8] {
+        [
+            self.mrr.result(),
+            self.ndcg.result(),
+            self.hitrate.result(),
+            self.popularity.result(),
+            self.precision.result(),
+            self.coverage.result(),
+            self.recall.result(),
+            self.f1.result(),
+        ]
+    }
+
     pub fn scores(&self) -> [f64; 4] {
         [
             self.mrr.result(),

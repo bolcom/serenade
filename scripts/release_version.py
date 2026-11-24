@@ -1,4 +1,5 @@
-"""Print a release tag only when the Cargo package version increases."""
+"""Detect explicit version increases or bump the patch version for main releases."""
+from pathlib import Path
 import re
 import subprocess
 import sys
@@ -19,5 +20,34 @@ def release_tag(previous, current):
     return f"v{current}" if parse(current) > parse(previous) else ""
 
 
+def bump_version(previous, root=Path(".")):
+    manifest = root / "Cargo.toml"
+    lockfile = root / "Cargo.lock"
+    manifest_text = manifest.read_text()
+    lock_text = lockfile.read_text()
+    package = tomllib.loads(manifest_text)["package"]
+    current = package["version"]
+    tag = release_tag(previous, current)
+    if tag:
+        return tag  # Preserve an explicit version increase.
+    if current != previous:
+        raise ValueError("Refusing to release a decreased package version")
+    major, minor, patch = map(int, current.split("."))
+    version = f"{major}.{minor}.{patch + 1}"
+    # Restrict edits to the root package and its lockfile entry.
+    manifest_pattern = r'(?ms)(^\[package\]\s*\n.*?^version\s*=\s*")' + re.escape(current) + r'(")'
+    lock_pattern = r'(?m)(^name = "' + re.escape(package["name"]) + r'"\nversion = ")' + re.escape(current) + r'(")'
+    manifest_text, manifests = re.subn(manifest_pattern, lambda m: m[1] + version + m[2], manifest_text, count=1)
+    lock_text, locks = re.subn(lock_pattern, lambda m: m[1] + version + m[2], lock_text)
+    if manifests != 1 or locks != 1:
+        raise ValueError("Expected one root package version in Cargo.toml and Cargo.lock")
+    manifest.write_text(manifest_text)
+    lockfile.write_text(lock_text)
+    return f"v{version}"
+
+
 if __name__ == "__main__":
-    print(release_tag(version_at(sys.argv[1]), version_at(sys.argv[2])))
+    if sys.argv[1] == "--bump":
+        print(bump_version(version_at(sys.argv[2])))
+    else:
+        print(release_tag(version_at(sys.argv[1]), version_at(sys.argv[2])))

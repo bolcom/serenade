@@ -18,6 +18,22 @@ VMIS-kNN — Scalable recommendation algorithm. An efficient adaptation of the s
 
 Serenade — Production recommendation system. A scalable, stateful recommendation service built around VMIS-kNN, combining real-time session management, low-latency recommendation serving, and efficient resource utilization. Originally deployed at bol.com, Serenade demonstrates that high-quality session-based nearest-neighbor recommendations can operate at industrial scale with low latency and modest computational resources.
 
+## Running the kNN benchmarks
+
+```powershell
+cargo run --release --example knn_benchmark -- target/scaled-local-100x-10x-items/train.tsv target/scaled-local-100x-10x-items/valid.tsv all --iterations 3 --warmup 1 --raw target/knn-benchmark/iterations.csv --snapshot-dir target/knn-benchmark/snapshots
+```
+
+Use actual training and validation paths. All five algorithms write one consolidated
+CSV to `target/knn-benchmark/results.csv`, with a companion metadata JSON file.
+Timings report medians and ranges across independent measured iterations; warm-ups
+are excluded. Progress goes to stderr (`--quiet` suppresses it).
+
+See [benchmark documentation](docs/knn-benchmark.md) for options, multiple datasets,
+measurement boundaries, quality definitions, memory estimates and synthetic scaling.
+The `prediction_benchmark` example measures VMIS throughput and executor performance,
+with `BENCH_SAMPLE_CAPACITY` samples preallocated per worker.
+
 ## Performance at scale
 
 Our research demonstrates that session-based nearest-neighbor methods can achieve **millisecond-level prediction latency at industrial scale**, even in large e-commerce environments.

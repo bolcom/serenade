@@ -274,23 +274,12 @@ impl VMISIndex {
         idf_weighting: f64,
     ) -> anyhow::Result<Self> {
         anyhow::ensure!(idf_weighting.is_finite(), "IDF weighting must be finite");
-        let start_time = Instant::now();
-        println!(
-            "reading training data, determine items per training session {}",
-            &path_to_training
-        );
         let data_train = read_from_file(path_to_training);
         let (historical_sessions_train, historical_sessions_max_time_stamp, training_data_stats) =
             data_train.map_err(|error| {
                 anyhow::anyhow!("load training data {}: {}", path_to_training, error)
             })?;
-        println!(
-            "reading training data, determine items per training session:{} micros",
-            start_time.elapsed().as_micros()
-        );
 
-        let start_time = Instant::now();
-        println!("prepare indexes");
         let (item_to_top_sessions_ordered, item_to_idf_score, item_to_product_attributes) =
             prepare_hashmap(
                 &historical_sessions_train,
@@ -299,10 +288,6 @@ impl VMISIndex {
                 training_data_stats.qty_events_p99_5 as usize,
                 idf_weighting,
             );
-        println!(
-            "prepare indexes:{} micros",
-            start_time.elapsed().as_micros()
-        );
 
         let index = VMISIndex {
             chronological_events: true,

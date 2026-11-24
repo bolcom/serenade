@@ -38,6 +38,14 @@ fn main() -> anyhow::Result<()> {
             && concurrency.iter().all(|n| *n > 0),
         "positive benchmark parameters required"
     );
+    // Per-worker fixed capacity; overflow aborts rather than changing the workload.
+    let sample_capacity: usize = std::env::var("BENCH_SAMPLE_CAPACITY")
+        .unwrap_or_else(|_| "1000000".into())
+        .parse()?;
+    anyhow::ensure!(
+        sample_capacity > 0,
+        "BENCH_SAMPLE_CAPACITY must be positive"
+    );
     let external = std::env::var("BENCH_TRAINING_DATA").ok();
     let path = external
         .as_ref()
@@ -110,14 +118,14 @@ fn main() -> anyhow::Result<()> {
                     };
                     for repeat in 0..repeats {
                         let barrier = Arc::new(Barrier::new(clients));
-                        let mut handles = Vec::new();
+                        let mut handles = Vec::with_capacity(clients);
                         for client in 0..clients {
                             let index = index.clone();
                             let pool = pool.clone();
                             let queries = queries.clone();
                             let barrier = barrier.clone();
                             handles.push(std::thread::spawn(move || {
-                                let mut samples = Vec::new();
+                                let mut samples = Vec::with_capacity(sample_capacity);
                                 let mut rejected = 0;
                                 barrier.wait();
                                 let start = Instant::now();
@@ -179,7 +187,10 @@ fn main() -> anyhow::Result<()> {
                                     };
                                     if measured {
                                         if success {
-                                            samples.push(before.elapsed().as_nanos() as u64);
+                                            let elapsed = before.elapsed().as_nanos() as u64;
+                                            assert!(samples.len() < sample_capacity,
+                                                "latency buffer full; increase BENCH_SAMPLE_CAPACITY");
+                                            samples.push(elapsed);
                                         } else {
                                             rejected += 1;
                                         }
@@ -192,10 +203,15 @@ fn main() -> anyhow::Result<()> {
                                 (samples, rejected)
                             }));
                         }
-                        let mut samples = Vec::new();
+                        let worker_results: Vec<_> = handles
+                            .into_iter()
+                            .map(|handle| handle.join().unwrap())
+                            .collect();
+                        let mut samples = Vec::with_capacity(
+                            worker_results.iter().map(|result| result.0.len()).sum(),
+                        );
                         let mut rejected = 0;
-                        for handle in handles {
-                            let (mut values, failures) = handle.join().unwrap();
+                        for (mut values, failures) in worker_results {
                             samples.append(&mut values);
                             rejected += failures;
                         }
