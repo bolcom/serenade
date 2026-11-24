@@ -35,6 +35,8 @@ use super::{similarity_indexed::SimilarityComputationNew, vmis_index::VMISIndex,
 pub enum Algorithm {
     Vmis,
     Sknn,
+    Ssknn,
+    Wsknn,
     Vsknn,
     Stan,
     VsknnStan,
@@ -45,6 +47,8 @@ impl std::str::FromStr for Algorithm {
         match s.to_ascii_lowercase().as_str() {
             "vmis" | "vmisknn" => Ok(Self::Vmis),
             "sknn" => Ok(Self::Sknn),
+            "ssknn" | "s-sknn" => Ok(Self::Ssknn),
+            "wsknn" => Ok(Self::Wsknn),
             "vsknn" | "vs-knn" => Ok(Self::Vsknn),
             "stan" => Ok(Self::Stan),
             "vsknn_stan" | "vstan" => Ok(Self::VsknnStan),
@@ -53,9 +57,11 @@ impl std::str::FromStr for Algorithm {
     }
 }
 impl Algorithm {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 7] = [
         Self::Vmis,
         Self::Sknn,
+        Self::Ssknn,
+        Self::Wsknn,
         Self::Vsknn,
         Self::Stan,
         Self::VsknnStan,
@@ -64,6 +70,8 @@ impl Algorithm {
         match self {
             Self::Vmis => "vmis",
             Self::Sknn => "sknn",
+            Self::Ssknn => "ssknn",
+            Self::Wsknn => "wsknn",
             Self::Vsknn => "vsknn",
             Self::Stan => "stan",
             Self::VsknnStan => "vsknn_stan",
@@ -107,7 +115,7 @@ impl std::str::FromStr for Weighting {
         match s {
             "same" | "none" => Ok(Self::Same),
             "linear" => Ok(Self::Linear),
-            "div" => Ok(Self::Div),
+            "div" | "inv" => Ok(Self::Div),
             "log" => Ok(Self::Log),
             "quadratic" => Ok(Self::Quadratic),
             _ => Err(format!("unsupported weighting: {}", s)),
@@ -177,17 +185,28 @@ impl KnnConfig {
         Self {
             algorithm,
             similarity: match algorithm {
-                Algorithm::Sknn => Similarity::Jaccard,
-                Algorithm::Vsknn => Similarity::Vec,
+                Algorithm::Sknn | Algorithm::Ssknn => Similarity::Jaccard,
+                Algorithm::Vsknn | Algorithm::Wsknn => Similarity::Vec,
                 _ => Similarity::Cosine,
             },
-            weighting: Weighting::Div,
-            weighting_score: Weighting::Div,
+            weighting: if algorithm == Algorithm::Wsknn {
+                Weighting::Linear
+            } else {
+                Weighting::Div
+            },
+            weighting_score: if algorithm == Algorithm::Wsknn {
+                Weighting::Linear
+            } else {
+                Weighting::Div
+            },
             weighting_time: false,
             idf_weighting: 0.0,
             idf_weighting_session: false,
-            remind: algorithm != Algorithm::Sknn,
-            normalize: matches!(algorithm, Algorithm::Sknn | Algorithm::Vsknn),
+            remind: !matches!(algorithm, Algorithm::Sknn | Algorithm::Ssknn),
+            normalize: matches!(
+                algorithm,
+                Algorithm::Sknn | Algorithm::Ssknn | Algorithm::Vsknn
+            ),
             pop_boost: 0.0,
             lambda_spw: Some(1.02),
             lambda_snh: Some(5.0),
@@ -197,6 +216,12 @@ impl KnnConfig {
         }
     }
     pub fn positional(&self) -> bool {
+        matches!(
+            self.algorithm,
+            Algorithm::Stan | Algorithm::VsknnStan | Algorithm::Wsknn
+        )
+    }
+    fn stan(&self) -> bool {
         matches!(self.algorithm, Algorithm::Stan | Algorithm::VsknnStan)
     }
     pub fn needs_reference_idf(&self) -> bool {
@@ -205,13 +230,26 @@ impl KnnConfig {
             || (self.algorithm == Algorithm::VsknnStan && self.lambda_idf.is_some())
     }
     pub fn validate(&self) -> Result<(), String> {
-        if self.algorithm == Algorithm::Sknn && self.similarity == Similarity::Vec {
+        if matches!(self.algorithm, Algorithm::Sknn | Algorithm::Ssknn)
+            && self.similarity == Similarity::Vec
+        {
             return Err("SKNN does not support vec similarity".into());
         }
         if self.algorithm == Algorithm::Vsknn
             && !matches!(self.similarity, Similarity::Vec | Similarity::Cosine)
         {
             return Err("VS-KNN supports vec and weighted cosine similarity".into());
+        }
+        if self.algorithm == Algorithm::Wsknn
+            && (!matches!(
+                self.weighting,
+                Weighting::Linear | Weighting::Log | Weighting::Quadratic
+            ) || !matches!(
+                self.weighting_score,
+                Weighting::Linear | Weighting::Log | Weighting::Quadratic | Weighting::Div
+            ) || self.similarity != Similarity::Vec)
+        {
+            return Err("WSKNN requires vec similarity, linear/log/quadratic weighting and linear/div/log/quadratic scoring".into());
         }
         for v in [
             self.lambda_spw,
@@ -242,12 +280,21 @@ fn current_weights(current: &[u64], config: &KnnConfig, index: &VMISIndex) -> Ha
         .iter()
         .enumerate()
         .map(|(i, &item)| {
-            let weight = if config.positional() {
+            let weight = if config.algorithm == Algorithm::Wsknn {
+                let count = (i + 1) as f64;
+                let length = current.len() as f64;
+                match config.weighting {
+                    Weighting::Linear => (count + 1.0) / length,
+                    Weighting::Log => 2.7_f64.log10() / (length - count + 1.7).log10(),
+                    Weighting::Quadratic => (count / length).powi(2),
+                    _ => unreachable!("validated WSKNN weighting"),
+                }
+            } else if config.stan() {
                 1.0
             } else {
                 config.weighting.position(i + 1, current.len())
             };
-            let weight = if config.positional() {
+            let weight = if config.stan() {
                 config
                     .lambda_spw
                     .map_or(1.0, |l| (((i + 1) as f64 - current.len() as f64) / l).exp())
@@ -291,7 +338,7 @@ pub fn score_neighbors(
         if a == 0.0 {
             continue;
         }
-        let mut score = if config.algorithm == Algorithm::Sknn {
+        let mut score = if matches!(config.algorithm, Algorithm::Sknn | Algorithm::Ssknn) {
             match config.similarity {
                 Similarity::Jaccard | Similarity::Tanimoto => intersection / (a + b - intersection),
                 // This order of operations intentionally follows sknn.py.
@@ -301,7 +348,9 @@ pub fn score_neighbors(
             }
         } else {
             let dot = items.iter().filter_map(|i| weights.get(i)).sum::<f64>();
-            if config.algorithm == Algorithm::Vsknn && config.similarity == Similarity::Vec {
+            if matches!(config.algorithm, Algorithm::Vsknn | Algorithm::Wsknn)
+                && config.similarity == Similarity::Vec
+            {
                 dot / b
             } else if norm > 0.0 {
                 dot / (norm * a.sqrt())
@@ -309,11 +358,11 @@ pub fn score_neighbors(
                 0.0
             }
         };
-        if !config.positional() && score <= 0.0 {
+        if !config.stan() && score <= 0.0 {
             continue;
         }
         let age = timestamp - index.session_to_max_time_stamp[id as usize] as f64;
-        if config.positional() {
+        if config.stan() {
             if let Some(days) = config.lambda_snh {
                 score *= (-age / (days * 86400.0)).exp();
             }
@@ -351,6 +400,29 @@ pub fn score_items(
     let current_set: HashSet<_> = current.iter().copied().collect();
     for neighbor in neighbors {
         let sequence = index.items_for_session(&neighbor.id);
+        if config.algorithm == Algorithm::Wsknn {
+            let Some(latest) = current.iter().rposition(|item| sequence.contains(item)) else {
+                continue;
+            };
+            let step = current.len() - latest;
+            let decay = match config.weighting_score {
+                Weighting::Linear => {
+                    if step < 10 {
+                        (1.0 - 0.1 * step as f64) / 0.9
+                    } else {
+                        0.0
+                    }
+                }
+                Weighting::Log => 2.7_f64.log10() / (step as f64 + 1.7).log10(),
+                other => other.matched(step),
+            };
+            for &item in sequence {
+                if config.remind || !current_set.contains(&item) {
+                    *scores.entry(item).or_insert(0.0) += neighbor.score * decay;
+                }
+            }
+            continue;
+        }
         let mut positions = HashMap::with_capacity(sequence.len());
         let mut anchor = 0;
         for (i, &item) in sequence.iter().enumerate() {
@@ -364,6 +436,7 @@ pub fn score_items(
             continue;
         };
         let decay = match config.algorithm {
+            Algorithm::Ssknn => config.weighting.matched(current.len() - latest_match),
             Algorithm::Vsknn => config.weighting_score.matched(current.len() - latest_match),
             Algorithm::VsknnStan => 1.0,
             _ => 1.0,
@@ -377,12 +450,14 @@ pub fn score_items(
         };
         for (item, position) in positions {
             // SKNN's remind flag adds reminders after scoring; it does not exclude current items.
-            if config.algorithm != Algorithm::Sknn && !config.remind && current_set.contains(&item)
+            if !matches!(config.algorithm, Algorithm::Sknn | Algorithm::Ssknn)
+                && !config.remind
+                && current_set.contains(&item)
             {
                 continue;
             }
             let mut score = neighbor.score;
-            if config.positional() {
+            if config.stan() {
                 if let Some(l) = config.lambda_inh {
                     score *= (-(position.abs_diff(anchor) as f64) / l).exp();
                 }
@@ -398,7 +473,7 @@ pub fn score_items(
             *scores.entry(item).or_insert(0.0) += score * decay;
         }
     }
-    if config.algorithm == Algorithm::Sknn {
+    if matches!(config.algorithm, Algorithm::Sknn | Algorithm::Ssknn) {
         if config.remind {
             for (i, item) in current
                 .iter()
@@ -479,7 +554,12 @@ mod reference_tests {
             .into_iter()
             .map(|(item, count)| (item, (4.0 / count as f64).ln()))
             .collect();
-        for line in include_str!("../../tests/reference/scores.tsv").lines() {
+        for line in concat!(
+            include_str!("../../tests/reference/scores.tsv"),
+            include_str!("../../tests/reference/extensions.tsv")
+        )
+        .lines()
+        {
             let f: Vec<_> = line.split('\t').collect();
             let mut cfg = KnnConfig::for_algorithm(f[0].parse().unwrap());
             cfg.similarity = f[1].parse().unwrap();
@@ -537,7 +617,7 @@ mod reference_tests {
                 .into_sorted_vec();
             let expected: Vec<u64> = f[18].split(',').map(|s| s.parse().unwrap()).collect();
             assert_eq!(ranked.len(), expected.len());
-            // The existing serving heap intentionally leaves exact-score ties unspecified.
+            // Python and the serving heap use different deterministic item tie orders.
             // Every rank must have the reference score; either tied item is valid.
             for (actual, expected_id) in ranked.iter().zip(&expected) {
                 close(scores[&actual.id], scores[expected_id], line);
@@ -571,13 +651,7 @@ mod reference_tests {
                 },
             );
         }
-        for algorithm in [
-            Algorithm::Vmis,
-            Algorithm::Sknn,
-            Algorithm::Vsknn,
-            Algorithm::Stan,
-            Algorithm::VsknnStan,
-        ] {
+        for algorithm in Algorithm::ALL {
             let model = KnnConfig::for_algorithm(algorithm);
             let full = predict_with_model(&index, &[1], 100, 100, 20, false, &model, 10.0)
                 .into_sorted_vec();

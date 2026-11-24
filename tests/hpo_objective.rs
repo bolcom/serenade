@@ -56,7 +56,10 @@ fn all_algorithms_optimize_selected_metric_and_generate_usable_models() {
         assert!(console.contains(&format!("Best {objective}")));
         let comparison = json(output.join("comparison.json"));
         let results = comparison.as_array().unwrap();
-        assert_eq!(results.len(), 5);
+        assert_eq!(
+            results.len(),
+            serenade::vmisknn::algorithms::Algorithm::ALL.len()
+        );
         for result in results {
             assert_eq!(result["objective"], objective.to_string());
             assert_eq!(result["evaluation"]["cutoff"], objective.cutoff());

@@ -827,7 +827,14 @@ mod tests {
             let mut reader = csv::Reader::from_path(&result)?;
             let header = reader.headers()?.clone();
             let rows: Vec<_> = reader.records().collect::<std::result::Result<_, _>>()?;
-            assert_eq!(rows.len(), if snapshots { 1 } else { 10 });
+            assert_eq!(
+                rows.len(),
+                if snapshots {
+                    1
+                } else {
+                    2 * Algorithm::ALL.len()
+                }
+            );
             let column = |key: &str| header.iter().position(|h| h == key).unwrap();
             let mut raw_reader = csv::Reader::from_path(&raw)?;
             let raw_header = raw_reader.headers()?.clone();

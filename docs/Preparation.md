@@ -32,6 +32,6 @@ test_data_path = "data/test.txt"
 
 Keep the remaining HPO settings. Run commands from the extracted package directory, with paths relative to that directory, or use absolute paths. Generated model configurations retain the dataset paths for evaluation and serving.
 
-Use the tab-separated format to get started with all five algorithms. Allow enough RAM for the training index; requirements depend on catalog size, session history, and candidate budget.
+Use the tab-separated format to get started with all seven algorithms. Allow enough RAM for the training index; requirements depend on catalog size, session history, and candidate budget.
 
 Next: [optimize, evaluate, and serve](BINARIES.md).

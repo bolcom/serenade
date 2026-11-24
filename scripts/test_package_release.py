@@ -24,9 +24,13 @@ class PackageReleaseTest(unittest.TestCase):
                 for name in ("hpo.toml", "train.txt", "test.txt", "valid.txt"):
                     archive.writestr(name, "fixture\n")
             (root / "docs").mkdir()
-            for name in ("BINARIES.md", "CONFIG.md", "Preparation.md"):
+            for name in ("BINARIES.md", "CONFIG.md", "Preparation.md", "session-knn-validation.md"):
                 (root / "docs" / name).write_text("fixture\n")
             (root / "LICENSE.md").write_text("fixture\n")
+            (root / "docs/third-party").mkdir()
+            (root / "docs/third-party/wsknn-LICENSE.md").write_text("fixture\n")
+            (root / "docs/validation").mkdir()
+            (root / "docs/validation/python-metrics.json").write_text("{}\n")
             argv = ["package_release.py", "--target", target,
                     "--platform", "windows-x86_64", "--version", "v0.3.2"]
             with patch.object(package_release, "ROOT", root), \
