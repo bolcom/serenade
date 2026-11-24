@@ -7,6 +7,8 @@ pub trait SimilarityComputationNew {
 
     fn idf(&self, item_id: &u64) -> f64;
 
+    fn session_timestamp(&self, session: u32) -> u32;
+
     /// find neighboring sessions for the given evolving_session.
     /// param m select the 'm' most recent historical sessions
     /// param k defines the top 'k' scored historical sessions out of the 'm' historical sessions.

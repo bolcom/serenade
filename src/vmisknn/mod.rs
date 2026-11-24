@@ -8,6 +8,7 @@ use crate::vmisknn::similarity_indexed::SimilarityComputationNew;
 use crate::vmisknn::vmis_index::ProductAttributes;
 
 pub mod algorithms;
+pub(crate) mod scoring;
 pub mod similarity_indexed;
 pub mod vmis_index;
 
@@ -225,15 +226,51 @@ pub fn predict_with_model(
     model: &algorithms::KnnConfig,
     timestamp: f64,
 ) -> BinaryHeap<ItemScore> {
+    predict_with_model_scratch(
+        index,
+        index,
+        current,
+        k,
+        m,
+        how_many,
+        enable_business_logic,
+        model,
+        timestamp,
+        &mut PredictionScratch::default(),
+    )
+}
+
+/// Shared prediction execution with immutable scoring statistics and caller-local buffers.
+pub fn predict_with_model_scratch<I: SimilarityComputationNew + Send + Sync>(
+    corpus: &vmis_index::VMISIndex,
+    index: &I,
+    current: &[u64],
+    k: usize,
+    m: usize,
+    how_many: usize,
+    enable_business_logic: bool,
+    model: &algorithms::KnnConfig,
+    timestamp: f64,
+    scratch: &mut PredictionScratch,
+) -> BinaryHeap<ItemScore> {
     if model.algorithm == algorithms::Algorithm::Vmis {
-        return predict(index, current, k, m, how_many, enable_business_logic);
+        return predict_with_scratch(
+            index,
+            current,
+            k,
+            m,
+            how_many,
+            enable_business_logic,
+            scratch,
+        );
     }
     if current.is_empty() || k == 0 || m == 0 || how_many == 0 {
         return BinaryHeap::new();
     }
-    let candidates = index.candidate_sessions(current, m);
+    let candidates = corpus.candidate_sessions(current, m);
     let neighbors = algorithms::score_neighbors(index, current, &candidates, timestamp, k, model);
-    let mut scores = algorithms::score_items(index, current, &neighbors, model);
+    let scores = &mut scratch.item_scores;
+    algorithms::score_items_into(index, current, &neighbors, model, scores);
     if model.normalize {
         let max = scores.values().copied().fold(0.0_f64, f64::max);
         if max > 0.0 {
@@ -242,7 +279,7 @@ pub fn predict_with_model(
             }
         }
     }
-    rank_items(index, current, &mut scores, how_many, enable_business_logic)
+    rank_items(index, current, scores, how_many, enable_business_logic)
 }
 
 fn rank_items<I: SimilarityComputationNew>(
@@ -327,6 +364,9 @@ mod vmisknn_test {
     fn empty_and_zero_limits_do_not_access_index() {
         struct UnusedIndex;
         impl SimilarityComputationNew for UnusedIndex {
+            fn session_timestamp(&self, _: u32) -> u32 {
+                panic!("unexpected access")
+            }
             fn items_for_session(&self, _: &u32) -> &[u64] {
                 panic!("unexpected access")
             }
@@ -425,6 +465,9 @@ mod vmisknn_test {
     fn repeated_historical_visits_do_not_change_vmis_scores() {
         struct SequenceIndex(Vec<u64>);
         impl SimilarityComputationNew for SequenceIndex {
+            fn session_timestamp(&self, _: u32) -> u32 {
+                0
+            }
             fn items_for_session(&self, _: &u32) -> &[u64] {
                 &self.0
             }

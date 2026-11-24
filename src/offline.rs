@@ -1,4 +1,5 @@
 //! Shared offline prediction points, metrics and algorithm selection.
+pub mod execution;
 use crate::{
     config::ModelConfig,
     io,

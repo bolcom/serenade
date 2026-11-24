@@ -125,10 +125,15 @@ impl VMISIndex {
         config: &super::algorithms::KnnConfig,
     ) -> Result<Self, String> {
         config.validate()?;
+        let mut index = Self::load_corpus(path, m)?;
+        index.prepare_for_model(m, legacy_idf_weight, config)?;
+        Ok(index)
+    }
+
+    /// Load immutable corpus structures at a structural retrieval capacity.
+    /// Scoring parameters belong to ScoringView, not to this operation.
+    pub fn load_corpus(path: &str, capacity: usize) -> Result<Self, String> {
         if Path::new(path).is_dir() {
-            if config.positional() || config.needs_reference_idf() {
-                return Err("Legacy Avro has no chronological events or raw-event IDF. Rebuild from the original chronological training CSV for this model.".into());
-            }
             return Self::try_new(path).map_err(|e| e.to_string());
         }
         if !Path::new(path).is_file() {
@@ -137,7 +142,7 @@ impl VMISIndex {
         use std::io::Read;
         let mut reader = std::io::BufReader::new(File::open(path).map_err(|e| e.to_string())?);
         let mut header = [0_u8; 17];
-        let mut index: Self = if reader.read_exact(&mut header).is_ok()
+        let index: Self = if reader.read_exact(&mut header).is_ok()
             && &header == b"SERENADE-VMIS-003"
         {
             bincode::deserialize_from(reader)
@@ -146,9 +151,14 @@ impl VMISIndex {
             if header.starts_with(b"SERENADE-VMIS") {
                 return Err("Unsupported VMIS snapshot version; rebuild from training data".into());
             }
-            Self::try_new_from_csv(path, m, legacy_idf_weight).map_err(|e| e.to_string())?
+            Self::try_new_from_csv(path, capacity, 1.0).map_err(|e| e.to_string())?
         };
-        index.prepare_for_model(m, legacy_idf_weight, config)?;
+        if index.candidate_capacity.is_some_and(|m| capacity > m) {
+            return Err(
+                "Requested m exceeds snapshot posting capacity; rebuild from training CSV".into(),
+            );
+        }
+        index.validate().map_err(|e| e.to_string())?;
         Ok(index)
     }
 
@@ -574,12 +584,15 @@ impl VMISIndex {
 }
 
 impl SimilarityComputationNew for VMISIndex {
+    fn session_timestamp(&self, session: u32) -> u32 {
+        self.session_to_max_time_stamp[session as usize]
+    }
     fn items_for_session(&self, session: &u32) -> &[u64] {
         &self.session_to_items_sorted[*session as usize]
     }
 
     fn idf(&self, item: &u64) -> f64 {
-        self.item_to_idf_score[item]
+        self.item_to_idf_score.get(item).copied().unwrap_or(0.0)
     }
 
     fn find_neighbors(

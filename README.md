@@ -109,6 +109,34 @@ For example:
 objective = "ndcg@8"
 ```
 
+HPO evaluates validation sessions in parallel while keeping TPE trials sequential.
+The training index and validation sessions are loaded once and shared by the workers;
+interactions within each session remain sequential. Only the selected objective is
+calculated during optimization, without latency collection or other quality metrics.
+
+Configure retrieval capacity independently of the search ranges:
+
+```toml
+[data]
+index_capacity = 2500
+
+[hyperparam]
+evaluation_workers = 0 # automatic CPU availability; use e.g. 4 to limit workers
+n_most_recent_sessions_range = [100, 2500]
+```
+
+`data.index_capacity` defaults to 2500. HPO rejects an `m` search upper bound
+above this capacity before loading data. It never grows or rebuilds the index to
+accommodate a trial. A supplied snapshot must already support the configured
+capacity. Smaller runtime `m` limits use the same immutable postings.
+The existing IDF representation is prepared once per algorithm; trial-specific
+weights are applied during scoring without rescanning the corpus. No additional
+corpus statistics maps are retained. Worker scratch allocations are reused across
+trials and depend on retrieval limits and session lengths, rather than the number
+of historical interactions. More workers can reach diminishing returns from
+memory bandwidth and scheduling overhead; measure representative runs when
+choosing an explicit worker count.
+
 All seven algorithms are enabled by default. Individual algorithms can be disabled in their configuration sections.
 
 Run TPE optimization:

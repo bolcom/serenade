@@ -109,6 +109,9 @@ fn all_algorithms_optimize_selected_metric_and_generate_usable_models() {
             .unwrap();
             assert_eq!(model.hyperparam.objective, objective);
             assert_eq!(model.model.num_items_to_recommend, 37);
+            for trial in trials {
+                assert_eq!(trial["validation_metrics"].as_object().unwrap().len(), 2);
+            }
             let selected = serde_json::to_value(&model.model.knn).unwrap();
             for (name, choices) in result["optimization"]["choices"].as_object().unwrap() {
                 assert_eq!(selected[name], best["hyperparameters"][name]);
@@ -150,5 +153,25 @@ fn all_algorithms_optimize_selected_metric_and_generate_usable_models() {
             assert!(evaluation["results"][0]["mrr_at_20"].is_number());
         }
     }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn rejects_search_above_fixed_capacity_before_loading_data() {
+    let root = std::env::temp_dir().join(format!("serenade-hpo-capacity-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let config = root.join("hpo.toml");
+    std::fs::write(&config, "[data]\nindex_capacity = 29\n[hyperparam]\ntraining_data_path = \"missing-training.tsv\"\nvalidation_data_path = \"missing-validation.tsv\"\nn_most_recent_sessions_range = [5, 30]\n").unwrap();
+    let result = Command::new(env!("CARGO_BIN_EXE_tpe_hyperparameter_optm"))
+        .arg(&config)
+        .output()
+        .unwrap();
+    assert!(!result.status.success());
+    let error = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        error.contains("exceeds fixed data.index_capacity 29"),
+        "{error}"
+    );
+    assert!(!root.join("hpo-results").exists());
     std::fs::remove_dir_all(root).unwrap();
 }

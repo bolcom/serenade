@@ -39,6 +39,8 @@ pub struct LogConfig {
 
 pub struct DataConfig {
     pub training_data_path: String,
+    /// Fixed retrieval capacity, independent of model and optimizer settings.
+    pub index_capacity: usize,
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -63,6 +65,7 @@ pub struct AlgorithmSearchConfig {
 }
 
 pub struct HyperparamConfig {
+    pub evaluation_workers: usize,
     pub objective: crate::metrics::objective::Objective,
     pub output_dir: String,
     pub algorithms: std::collections::BTreeMap<String, AlgorithmSearchConfig>,
@@ -204,6 +207,10 @@ impl LogConfig {
 impl DataConfig {
     fn parse(conf: &Config, path: ConfPath) -> anyhow::Result<DataConfig> {
         Ok(DataConfig {
+            index_capacity: conf
+                .get(path.push("index_capacity"))
+                .trim()
+                .value_or_default("index_capacity", 2500)?,
             training_data_path: conf
                 .get(path.push("training_data_path"))
                 .unquote()
@@ -356,6 +363,10 @@ impl HyperparamConfig {
                 .get(path.push("validation_data_path"))
                 .unquote()
                 .value_or_default("validation_data_path", String::new())?,
+            evaluation_workers: conf
+                .get(path.push("evaluation_workers"))
+                .trim()
+                .value_or_default("evaluation_workers", 0)?,
             num_trials: conf
                 .get(path.push("num_trials"))
                 .trim()

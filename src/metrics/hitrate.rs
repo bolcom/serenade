@@ -1,6 +1,5 @@
 use crate::metrics::SessionMetric;
 
-use itertools::Itertools;
 use std::cmp;
 
 pub struct HitRate {
@@ -24,12 +23,11 @@ impl HitRate {
 impl SessionMetric for HitRate {
     fn add(&mut self, recommendations: &[u64], next_items: &[u64]) {
         self.qty += 1;
-        let top_recos = recommendations
+        let mut top_recos = recommendations
             .iter()
-            .take(cmp::min(recommendations.len(), self.length))
-            .collect_vec();
+            .take(cmp::min(recommendations.len(), self.length));
         let next_item = next_items[0];
-        let index = top_recos.iter().position(|&item_id| item_id == &next_item);
+        let index = top_recos.position(|&item_id| item_id == next_item);
         if let Some(_rank) = index {
             self.sum_of_scores += 1_f64
         }
@@ -66,5 +64,12 @@ mod hitrate_test {
     fn should_handle_divide_by_zero() {
         let undertest = HitRate::new(20);
         assert!((0.0 - undertest.result()).abs() < f64::EPSILON);
+    }
+}
+
+impl HitRate {
+    pub(crate) fn merge(&mut self, other: Self) {
+        self.sum_of_scores += other.sum_of_scores;
+        self.qty += other.qty;
     }
 }

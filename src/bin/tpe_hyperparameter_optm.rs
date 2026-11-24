@@ -302,7 +302,13 @@ fn main() -> anyhow::Result<()> {
         .iter()
         .map(|m| axes(&config, m.knn.algorithm))
         .collect::<anyhow::Result<Vec<_>>>()?;
-    let max_m = searches.iter().map(|s| s.max_m).max().unwrap();
+    let capacity = config.data.index_capacity;
+    anyhow::ensure!(capacity > 0, "data.index_capacity must be positive");
+    for (model, search) in models.iter().zip(&searches) {
+        anyhow::ensure!(search.max_m <= capacity,
+            "{}: m search upper bound {} exceeds fixed data.index_capacity {}; reduce the search range or explicitly configure an appropriate operational capacity",
+            model.knn.algorithm.name(), search.max_m, capacity);
+    }
     let training = if config.hyperparam.training_data_path.is_empty() {
         &config.data.training_data_path
     } else {
@@ -312,14 +318,9 @@ fn main() -> anyhow::Result<()> {
         !training.is_empty(),
         "hyperparam.training_data_path is required"
     );
+    let mut index = VMISIndex::load_corpus(training, capacity).map_err(anyhow::Error::msg)?;
     let data = EvaluationData::load(&config.hyperparam.validation_data_path)?;
-    let mut index = VMISIndex::load_for_model(
-        training,
-        max_m,
-        config.model.idf_weighting,
-        &config.model.knn,
-    )
-    .map_err(anyhow::Error::msg)?;
+    let execution = offline::execution::Execution::new(config.hyperparam.evaluation_workers)?;
     let output = args
         .get(3)
         .map(String::as_str)
@@ -340,12 +341,18 @@ fn main() -> anyhow::Result<()> {
             ..
         } = search;
         let algorithm = base.knn.algorithm.name();
+        // Retain the existing IDF representation, prepared once per algorithm.
+        // All trial-dependent weights are applied by a borrowed scoring view.
+        let mut scoring = base.knn.clone();
+        scoring.idf_weighting = 1.0;
+        index
+            .prepare_for_model(capacity, 1.0, &scoring)
+            .map_err(anyhow::Error::msg)?;
         let mut rng = StdRng::seed_from_u64(config.hyperparam.seed);
         let mut best_score = f64::NEG_INFINITY;
         let mut best_model = base.clone();
         let mut best_parameters = BTreeMap::new();
         let mut trials = Vec::new();
-        let mut prepared = None;
         let trials_path = Path::new(output).join(format!("{}-trials.jsonl", algorithm));
         let mut records = std::io::BufWriter::new(std::fs::File::create(trials_path)?);
         use std::io::Write;
@@ -377,35 +384,28 @@ fn main() -> anyhow::Result<()> {
             model.neighborhood_size_k = model.neighborhood_size_k.min(model.m_most_recent_sessions);
             parameters.insert("neighborhood_size_k", json!(model.neighborhood_size_k));
             model.knn.validate().map_err(anyhow::Error::msg)?;
-            // The only changing index statistics are VMIS's IDF weight and the reference-IDF mode.
-            let key = (
-                model.knn.needs_reference_idf(),
-                model.knn.algorithm == Algorithm::Vmis,
-                model.idf_weighting.to_bits(),
-            );
-            if prepared != Some(key) {
-                index
-                    .prepare_for_model(max_m, model.idf_weighting, &model.knn)
-                    .map_err(anyhow::Error::msg)?;
-                prepared = Some(key);
-            }
-            let result = offline::evaluate_at_cutoff(
+            let result = execution.run(
                 &index,
                 &data,
                 &model,
                 config.hyperparam.enable_business_logic,
-                std::num::NonZeroUsize::new(objective.cutoff()).unwrap(),
-            );
-            let score = result.score(objective);
+                objective,
+            )?;
+            let score = result.objective;
             for (axis, sample) in axes.iter_mut().zip(samples) {
                 axis.optimizer.tell(sample, -score)?;
             }
             let mut record = json!({"trial":trial, "hyperparameters":parameters,
-                "objective":objective.to_string(), "validation_score":score, "validation_metrics":{"cutoff":result.cutoff, "mrr":result.mrr, "ndcg":result.ndcg, "hitrate":result.hitrate, "coverage":result.coverage}});
+                "objective":objective.to_string(), "validation_score":score, "validation_metrics":{"cutoff":objective.cutoff()}});
+            record["validation_metrics"][match objective.metric() {
+                serenade::metrics::objective::RankingMetric::Mrr => "mrr",
+                serenade::metrics::objective::RankingMetric::Ndcg => "ndcg",
+                serenade::metrics::objective::RankingMetric::HitRate => "hitrate",
+            }] = json!(score);
             if objective == Default::default() {
                 record["validation_mrr_at_20"] = json!(score);
             }
-            println!(
+            eprintln!(
                 "{} trial {}/{}: {} = {:.6}",
                 algorithm,
                 trial + 1,
@@ -423,7 +423,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         let snippet = model_snippet(&best_model);
-        let application = format!("[hyperparam]\nobjective = {:?}\ntraining_data_path = {:?}\nvalidation_data_path = {:?}\ntest_data_path = {:?}\n\n[server]\nhost = \"{}\"\nport = {}\nnum_workers = {}\n\n[data]\ntraining_data_path = {:?}\n\n[logic]\nenable_business_logic = {}\nexample_item_id = {}\n\n{}", objective.to_string().to_lowercase(), training, config.hyperparam.validation_data_path, config.hyperparam.test_data_path, config.server.host, config.server.port, config.server.num_workers, training, config.hyperparam.enable_business_logic, config.logic.example_item_id, snippet);
+        let application = format!("[hyperparam]\nobjective = {:?}\ntraining_data_path = {:?}\nvalidation_data_path = {:?}\ntest_data_path = {:?}\n\n[server]\nhost = \"{}\"\nport = {}\nnum_workers = {}\n\n[data]\ntraining_data_path = {:?}\nindex_capacity = {}\n\n[logic]\nenable_business_logic = {}\nexample_item_id = {}\n\n{}", objective.to_string().to_lowercase(), training, config.hyperparam.validation_data_path, config.hyperparam.test_data_path, config.server.host, config.server.port, config.server.num_workers, training, capacity, config.hyperparam.enable_business_logic, config.logic.example_item_id, snippet);
         let application_path = Path::new(output).join(format!("{}.toml", algorithm));
         std::fs::write(&application_path, application)?;
         let reloaded = AppConfig::try_new(application_path.to_string_lossy().into_owned())?;
@@ -431,7 +431,7 @@ fn main() -> anyhow::Result<()> {
             serde_json::to_value(&reloaded.model)? == serde_json::to_value(&best_model)?,
             "generated configuration did not reload"
         );
-        let mut result = json!({"algorithm":algorithm, "objective":objective.to_string(), "best_hyperparameters":best_parameters, "best_validation_score":best_score, "optimization":{"optimizer":"TPE", "iterations":config.hyperparam.num_trials, "seed":config.hyperparam.seed, "ranges":ranges, "choices":choices, "objective":format!("maximize {}", objective)}, "evaluation":{"training_data":training, "validation_data":config.hyperparam.validation_data_path, "test_data":config.hyperparam.test_data_path, "cutoff":objective.cutoff(), "business_logic":config.hyperparam.enable_business_logic}, "model_config":snippet, "trials":trials});
+        let mut result = json!({"algorithm":algorithm, "objective":objective.to_string(), "best_hyperparameters":best_parameters, "best_validation_score":best_score, "optimization":{"optimizer":"TPE", "iterations":config.hyperparam.num_trials, "seed":config.hyperparam.seed, "ranges":ranges, "choices":choices, "objective":format!("maximize {}", objective)}, "evaluation":{"training_data":training, "validation_data":config.hyperparam.validation_data_path, "test_data":config.hyperparam.test_data_path, "cutoff":objective.cutoff(), "business_logic":config.hyperparam.enable_business_logic, "workers":execution.workers(), "index_capacity":capacity}, "model_config":snippet, "trials":trials});
         if objective == Default::default() {
             result["best_validation_mrr_at_20"] = json!(best_score);
         }

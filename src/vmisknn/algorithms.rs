@@ -28,7 +28,7 @@ impl Ord for RankedNeighbor {
             .then(self.order.cmp(&other.order))
     }
 }
-use super::{similarity_indexed::SimilarityComputationNew, vmis_index::VMISIndex, SessionScore};
+use super::{similarity_indexed::SimilarityComputationNew, SessionScore};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -275,7 +275,11 @@ impl KnnConfig {
 }
 
 /// Build once per request; duplicate current items overwrite earlier positions.
-fn current_weights(current: &[u64], config: &KnnConfig, index: &VMISIndex) -> HashMap<u64, f64> {
+fn current_weights(
+    current: &[u64],
+    config: &KnnConfig,
+    index: &(impl SimilarityComputationNew + ?Sized),
+) -> HashMap<u64, f64> {
     current
         .iter()
         .enumerate()
@@ -299,7 +303,7 @@ fn current_weights(current: &[u64], config: &KnnConfig, index: &VMISIndex) -> Ha
                     .lambda_spw
                     .map_or(1.0, |l| (((i + 1) as f64 - current.len() as f64) / l).exp())
             } else if config.idf_weighting_session {
-                index.item_to_idf_score.get(&item).copied().unwrap_or(0.0)
+                index.idf(&item)
             } else {
                 weight
             };
@@ -310,7 +314,7 @@ fn current_weights(current: &[u64], config: &KnnConfig, index: &VMISIndex) -> Ha
 
 /// Score identical candidates independently of VMIS pruning. Ties retain candidate order.
 pub fn score_neighbors(
-    index: &VMISIndex,
+    index: &(impl SimilarityComputationNew + ?Sized),
     current: &[u64],
     candidates: &[u32],
     timestamp: f64,
@@ -361,7 +365,7 @@ pub fn score_neighbors(
         if !config.stan() && score <= 0.0 {
             continue;
         }
-        let age = timestamp - index.session_to_max_time_stamp[id as usize] as f64;
+        let age = timestamp - index.session_timestamp(id) as f64;
         if config.stan() {
             if let Some(days) = config.lambda_snh {
                 score *= (-age / (days * 86400.0)).exp();
@@ -391,12 +395,25 @@ pub fn score_neighbors(
 
 /// Raw reference item scores, before shared serving filters and normalization.
 pub fn score_items(
-    index: &VMISIndex,
+    index: &(impl SimilarityComputationNew + ?Sized),
     current: &[u64],
     neighbors: &[SessionScore],
     config: &KnnConfig,
 ) -> HashMap<u64, f64> {
     let mut scores = HashMap::with_capacity(1000);
+    score_items_into(index, current, neighbors, config, &mut scores);
+    scores
+}
+
+/// Reuse caller-owned scores without retaining predictions between interactions.
+pub(crate) fn score_items_into(
+    index: &(impl SimilarityComputationNew + ?Sized),
+    current: &[u64],
+    neighbors: &[SessionScore],
+    config: &KnnConfig,
+    scores: &mut HashMap<u64, f64>,
+) {
+    scores.clear();
     let current_set: HashSet<_> = current.iter().copied().collect();
     for neighbor in neighbors {
         let sequence = index.items_for_session(&neighbor.id);
@@ -496,17 +513,17 @@ pub fn score_items(
                 }
             }
             let max = counts.values().copied().max().unwrap_or(1) as f64;
-            for (item, score) in &mut scores {
+            for (item, score) in scores.iter_mut() {
                 *score += config.pop_boost * counts.get(item).copied().unwrap_or(0) as f64 / max;
             }
         }
     }
-    scores
 }
 
 #[cfg(test)]
 mod reference_tests {
     use super::*;
+    use crate::vmisknn::vmis_index::VMISIndex;
     fn close(actual: f64, expected: f64, context: &str) {
         assert!(
             (actual - expected).abs() <= 1e-12 * expected.abs().max(1.0),
