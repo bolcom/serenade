@@ -67,21 +67,51 @@ impl Fixture {
                     .collect()
             })
             .collect();
-        let quality = console.split("Recommendation quality\n").nth(1).unwrap();
-        let quality_rows: Vec<_> = quality.lines().skip(2).take(rows.len()).collect();
-        assert_eq!(quality_rows.len(), rows.len());
-        for (row, line) in rows.iter().zip(quality_rows) {
-            let cells: Vec<_> = line.split_whitespace().collect();
-            assert_eq!(cells[0], row["configuration_id"]);
-            assert_eq!(cells[1], row["algorithm"]);
-            for (i, name) in METRICS.iter().enumerate() {
-                assert_eq!(
-                    cells[i + 3],
-                    format!("{:.4}", row[*name].parse::<f64>().unwrap())
-                );
+        for (title, names, offset) in [
+            (
+                "Recommendation quality",
+                vec![
+                    "MRR@20",
+                    "NDCG@20",
+                    "HitRate@20",
+                    "Precision@20",
+                    "Recall@20",
+                    "F1@20",
+                    "MAP@20",
+                ],
+                3,
+            ),
+            (
+                "Catalog exposure, diversity and result completeness",
+                vec![
+                    "Popularity@20",
+                    "Coverage@20",
+                    "Gini@20",
+                    "ShannonEntropy@20",
+                    "LongTailShare@20",
+                    "IntraListDiversity@20",
+                    "EmptyResultRate@20",
+                    "FillRate@20",
+                ],
+                2,
+            ),
+        ] {
+            let section = console.split(&format!("{title}\n")).nth(1).unwrap();
+            let lines: Vec<_> = section.lines().skip(2).take(rows.len()).collect();
+            assert_eq!(lines.len(), rows.len());
+            for (row, line) in rows.iter().zip(lines) {
+                let cells: Vec<_> = line.split_whitespace().collect();
+                assert_eq!(cells[0], row["configuration_id"]);
+                assert_eq!(cells[1], row["algorithm"]);
+                for (i, name) in names.iter().enumerate() {
+                    assert_eq!(
+                        cells[i + offset],
+                        format!("{:.4}", row[*name].parse::<f64>().unwrap())
+                    );
+                }
             }
         }
-        assert_eq!(console.matches("Quality: unitless").count(), 1);
+        assert_eq!(console.matches("Quality: per-case").count(), 1);
         assert_eq!(console.matches("Dataset 1:").count(), 1);
         if flags.contains(&"--benchmark") {
             assert_eq!(console.matches("Benchmark: medians").count(), 1);
@@ -112,7 +142,7 @@ impl Drop for Fixture {
         }
     }
 }
-const METRICS: [&str; 8] = [
+const METRICS: [&str; 15] = [
     "MRR@20",
     "NDCG@20",
     "HitRate@20",
@@ -121,6 +151,13 @@ const METRICS: [&str; 8] = [
     "Coverage@20",
     "Recall@20",
     "F1@20",
+    "MAP@20",
+    "Gini@20",
+    "ShannonEntropy@20",
+    "LongTailShare@20",
+    "IntraListDiversity@20",
+    "EmptyResultRate@20",
+    "FillRate@20",
 ];
 #[test]
 fn all_metrics_match_sequential_reference_and_parallel_workers() {
@@ -132,7 +169,7 @@ fn all_metrics_match_sequential_reference_and_parallel_workers() {
         let mut index =
             VMISIndex::load_corpus(f.0.join("train.tsv").to_str().unwrap(), 10).unwrap();
         index.prepare_for_model(5, 1., &c.model.knn).unwrap();
-        let mut reference = EvaluationReporter::from_items(index.training_items(), 20);
+        let mut reference = EvaluationReporter::from_sessions(index.training_sessions(), 20);
         let sessions = [
             vec![(10, 120.), (20, 121.), (30, 122.)],
             vec![(20, 120.), (40, 121.)],

@@ -86,6 +86,7 @@ pub struct RankingEvaluationResult {
     pub ndcg: f64,
     pub hitrate: f64,
     pub coverage: f64,
+    pub beyond_scores: [f64; 7],
     pub duration_seconds: f64,
     pub prediction_mean_us: f64,
     pub prediction_p95_us: f64,
@@ -103,6 +104,13 @@ impl RankingEvaluationResult {
             RankingMetric::Mrr => self.mrr,
             RankingMetric::Ndcg => self.ndcg,
             RankingMetric::HitRate => self.hitrate,
+            RankingMetric::Map => self.beyond_scores[0],
+            RankingMetric::Gini => self.beyond_scores[1],
+            RankingMetric::ShannonEntropy => self.beyond_scores[2],
+            RankingMetric::LongTailShare => self.beyond_scores[3],
+            RankingMetric::IntraListDiversity => self.beyond_scores[4],
+            RankingMetric::EmptyResultRate => self.beyond_scores[5],
+            RankingMetric::FillRate => self.beyond_scores[6],
         }
     }
 }
@@ -115,7 +123,7 @@ pub fn evaluate_at_cutoff(
     cutoff: std::num::NonZeroUsize,
 ) -> RankingEvaluationResult {
     let started = Instant::now();
-    let mut reporter = EvaluationReporter::from_items(index.training_items(), cutoff.get());
+    let mut reporter = EvaluationReporter::from_sessions(index.training_sessions(), cutoff.get());
     let mut latencies = Vec::new();
     for events in &data.sessions {
         let items: Vec<_> = events.iter().map(|e| e.0).collect();
@@ -149,6 +157,7 @@ pub fn evaluate_at_cutoff(
         ndcg,
         hitrate,
         coverage,
+        beyond_scores: reporter.beyond.scores(),
         duration_seconds: started.elapsed().as_secs_f64(),
         prediction_mean_us: mean,
         prediction_p95_us: latencies[(latencies.len() - 1) * 95 / 100],

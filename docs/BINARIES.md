@@ -71,7 +71,7 @@ in `serenade.toml` provide configuration-relative overrides. None requires copyi
 production data. All three use independent index capacity 2500 by default and reject
 incompatible retrieval limits. Persisted indexes must already support that capacity.
 
-Quality evaluation preserves all eight metrics at 20, reusing matching training
+Quality evaluation reports all fifteen metrics at 20 in two console tables, reusing matching training
 indexes and test data. Benchmarking preserves median aggregation, separate serial
 latency and parallel throughput, with `--iterations 5`, `--warmup 1`, and optional
 `--snapshot-dir DIR` for snapshot save/load measurements. HPO retains shared immutable
@@ -106,6 +106,6 @@ evaluator --train workspace/train.txt --predictions predictions.txt
 Each line contains comma-separated recommendation IDs, a semicolon, then
 comma-separated next-item IDs: `10,20,30;20,40`. Empty recommendation lists and
 trailing commas are accepted; next-item lists must contain at least one ID.
-This mode prints the evaluation count and all eight metrics at 20 as CSV to stdout.
+This mode prints the evaluation count and all fifteen metrics at 20 as CSV to stdout.
 Malformed prediction rows fail with the filename and line number.
 These commands replace the former `build_index` and `evaluate_file` executables.

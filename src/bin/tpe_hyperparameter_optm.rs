@@ -392,6 +392,7 @@ fn main() -> anyhow::Result<()> {
         .unwrap_or(&config.hyperparam.output_dir);
     std::fs::create_dir_all(output)?;
     let objective = config.hyperparam.objective;
+    let objective_catalog = offline::execution::Execution::objective_catalog(&index, objective);
     println!("Objective: {}", objective);
     let mut comparison = Vec::new();
     for (base, search) in models.into_iter().zip(searches) {
@@ -450,24 +451,21 @@ fn main() -> anyhow::Result<()> {
             model.neighborhood_size_k = model.neighborhood_size_k.min(model.m_most_recent_sessions);
             parameters.insert("neighborhood_size_k", json!(model.neighborhood_size_k));
             model.knn.validate().map_err(anyhow::Error::msg)?;
-            let result = execution.run(
+            let result = execution.run_with_catalog(
                 &index,
                 &data,
                 &model,
                 config.hyperparam.enable_business_logic,
                 objective,
+                objective_catalog.clone(),
             )?;
             let score = result.objective;
             for (axis, sample) in axes.iter_mut().zip(samples) {
-                axis.optimizer.tell(sample, -score)?;
+                axis.optimizer.tell(sample, objective.loss(score))?;
             }
             let mut record = json!({"trial":trial, "hyperparameters":parameters,
                 "objective":objective.to_string(), "validation_score":score, "validation_metrics":{"cutoff":objective.cutoff()}});
-            record["validation_metrics"][match objective.metric() {
-                serenade::metrics::objective::RankingMetric::Mrr => "mrr",
-                serenade::metrics::objective::RankingMetric::Ndcg => "ndcg",
-                serenade::metrics::objective::RankingMetric::HitRate => "hitrate",
-            }] = json!(score);
+            record["validation_metrics"][objective.name()] = json!(score);
             if objective == Default::default() {
                 record["validation_mrr_at_20"] = json!(score);
             }
@@ -484,7 +482,8 @@ fn main() -> anyhow::Result<()> {
                 records.flush()?;
             }
             trials.push(record);
-            if score > best_score {
+            if best_score == f64::NEG_INFINITY || objective.loss(score) < objective.loss(best_score)
+            {
                 best_score = score;
                 best_model = model;
                 best_parameters = parameters;
@@ -498,7 +497,7 @@ fn main() -> anyhow::Result<()> {
             serde_json::to_value(&reloaded)? == serde_json::to_value(&best_model)?,
             "generated configuration did not reload"
         );
-        let mut result = json!({"algorithm":algorithm, "objective":objective.to_string(), "best_hyperparameters":best_parameters, "best_validation_score":best_score, "optimization":{"optimizer":"TPE", "iterations":config.hyperparam.num_trials, "seed":config.hyperparam.seed, "ranges":ranges, "choices":choices, "objective":format!("maximize {}", objective)}, "evaluation":{"training_data":training, "validation_data":config.hyperparam.validation_data_path, "test_data":config.hyperparam.test_data_path, "cutoff":objective.cutoff(), "business_logic":config.hyperparam.enable_business_logic, "workers":execution.workers(), "index_capacity":capacity}, "model_config":snippet, "trials":trials});
+        let mut result = json!({"algorithm":algorithm, "objective":objective.to_string(), "best_hyperparameters":best_parameters, "best_validation_score":best_score, "optimization":{"optimizer":"TPE", "iterations":config.hyperparam.num_trials, "seed":config.hyperparam.seed, "ranges":ranges, "choices":choices, "objective":format!("{} {}", if objective.minimize() { "minimize" } else { "maximize" }, objective)}, "evaluation":{"training_data":training, "validation_data":config.hyperparam.validation_data_path, "test_data":config.hyperparam.test_data_path, "cutoff":objective.cutoff(), "business_logic":config.hyperparam.enable_business_logic, "workers":execution.workers(), "index_capacity":capacity}, "model_config":snippet, "trials":trials});
         if objective == Default::default() {
             result["best_validation_mrr_at_20"] = json!(best_score);
         }
@@ -633,6 +632,7 @@ normalize_choices = [false, true]
                     ndcg,
                     hitrate,
                     coverage,
+                    beyond_scores: reporter.beyond.scores(),
                     duration_seconds: 0.0,
                     prediction_mean_us: 0.0,
                     prediction_p95_us: 0.0,
@@ -645,7 +645,9 @@ normalize_choices = [false, true]
             let mut best_trial = None;
             for (trial, result) in trials.iter().enumerate() {
                 let score = result.score(objective);
-                if score > best_score {
+                if best_score == f64::NEG_INFINITY
+                    || objective.loss(score) < objective.loss(best_score)
+                {
                     best_score = score;
                     best_trial = Some(trial);
                 }

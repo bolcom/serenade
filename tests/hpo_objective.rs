@@ -42,7 +42,18 @@ fn all_algorithms_optimize_selected_metric_and_generate_usable_models() {
     std::fs::write(&train, events).unwrap();
     std::fs::write(&holdout, "SessionId\tItemId\tTime\n1\t1\t200\n1\t3\t201\n1\t8\t202\n2\t2\t200\n2\t1\t201\n2\t10\t202\n").unwrap();
     let config_path = root.join("hpo.toml");
-    for text in ["mrr@20", "ndcg@8", "hitrate@10"] {
+    for text in [
+        "mrr@20",
+        "ndcg@8",
+        "hitrate@10",
+        "map@3",
+        "gini@3",
+        "shannonentropy@3",
+        "longtailshare@3",
+        "intralistdiversity@3",
+        "emptyresultrate@3",
+        "fillrate@3",
+    ] {
         let objective: Objective = text.parse().unwrap();
         let output = root.join(text.replace('@', "-"));
         // JSON strings also provide suitable quoting for these TOML paths.
@@ -61,6 +72,17 @@ fn all_algorithms_optimize_selected_metric_and_generate_usable_models() {
         );
         for result in results {
             assert_eq!(result["objective"], objective.to_string());
+            assert_eq!(
+                result["optimization"]["objective"],
+                format!(
+                    "{} {objective}",
+                    if objective.minimize() {
+                        "minimize"
+                    } else {
+                        "maximize"
+                    }
+                )
+            );
             assert_eq!(result["evaluation"]["cutoff"], objective.cutoff());
             let algorithm = result["algorithm"].as_str().unwrap();
             assert_eq!(json(output.join(format!("{algorithm}.json"))), *result);
@@ -75,8 +97,8 @@ fn all_algorithms_optimize_selected_metric_and_generate_usable_models() {
                     trial["validation_score"],
                     trial["validation_metrics"][metric]
                 );
-                if trial["validation_score"].as_f64().unwrap()
-                    > best["validation_score"].as_f64().unwrap()
+                if objective.loss(trial["validation_score"].as_f64().unwrap())
+                    < objective.loss(best["validation_score"].as_f64().unwrap())
                 {
                     best = trial;
                 }
@@ -132,9 +154,10 @@ fn all_algorithms_optimize_selected_metric_and_generate_usable_models() {
                 false,
                 std::num::NonZeroUsize::new(objective.cutoff()).unwrap(),
             );
-            assert_eq!(
-                reproduced.score(objective),
-                result["best_validation_score"].as_f64().unwrap()
+            assert!(
+                (reproduced.score(objective) - result["best_validation_score"].as_f64().unwrap())
+                    .abs()
+                    < 1e-12
             );
         }
         let csv_path = output.join("evaluation.csv");

@@ -28,7 +28,7 @@ struct Buffers {
     items: Vec<u64>,
     ranked: Vec<u64>,
 }
-// HPO selects one objective accumulator without catalog statistics or timings.
+// HPO selects one objective accumulator without timings.
 // Quality shares catalog statistics; performance passes retain no metric state.
 enum Metric {
     Full(crate::metrics::evaluation_reporter::EvaluationReporter),
@@ -36,18 +36,79 @@ enum Metric {
     Mrr(Mrr),
     Ndcg(Ndcg),
     HitRate(HitRate),
+    Beyond(crate::metrics::beyond_accuracy::BeyondAccuracy, usize),
 }
 impl Metric {
-    fn new(objective: Objective) -> Self {
+    fn new(
+        objective: Objective,
+        catalog: Option<std::sync::Arc<crate::metrics::beyond_accuracy::Catalog>>,
+    ) -> Self {
         match objective.metric() {
             RankingMetric::Mrr => Self::Mrr(Mrr::new(objective.cutoff())),
             RankingMetric::Ndcg => Self::Ndcg(Ndcg::new(objective.cutoff())),
             RankingMetric::HitRate => Self::HitRate(HitRate::new(objective.cutoff())),
+            RankingMetric::Map => Self::Beyond(
+                crate::metrics::beyond_accuracy::BeyondAccuracy::selected(
+                    catalog.unwrap(),
+                    objective.cutoff(),
+                    0,
+                ),
+                0,
+            ),
+            RankingMetric::Gini => Self::Beyond(
+                crate::metrics::beyond_accuracy::BeyondAccuracy::selected(
+                    catalog.unwrap(),
+                    objective.cutoff(),
+                    1,
+                ),
+                1,
+            ),
+            RankingMetric::ShannonEntropy => Self::Beyond(
+                crate::metrics::beyond_accuracy::BeyondAccuracy::selected(
+                    catalog.unwrap(),
+                    objective.cutoff(),
+                    2,
+                ),
+                2,
+            ),
+            RankingMetric::LongTailShare => Self::Beyond(
+                crate::metrics::beyond_accuracy::BeyondAccuracy::selected(
+                    catalog.unwrap(),
+                    objective.cutoff(),
+                    3,
+                ),
+                3,
+            ),
+            RankingMetric::IntraListDiversity => Self::Beyond(
+                crate::metrics::beyond_accuracy::BeyondAccuracy::selected(
+                    catalog.unwrap(),
+                    objective.cutoff(),
+                    4,
+                ),
+                4,
+            ),
+            RankingMetric::EmptyResultRate => Self::Beyond(
+                crate::metrics::beyond_accuracy::BeyondAccuracy::selected(
+                    catalog.unwrap(),
+                    objective.cutoff(),
+                    5,
+                ),
+                5,
+            ),
+            RankingMetric::FillRate => Self::Beyond(
+                crate::metrics::beyond_accuracy::BeyondAccuracy::selected(
+                    catalog.unwrap(),
+                    objective.cutoff(),
+                    6,
+                ),
+                6,
+            ),
         }
     }
     fn add(&mut self, ranked: &[u64], target: &[u64]) {
         match self {
             Self::Full(m) => m.add(ranked, target),
+            Self::Beyond(m, _) => m.add(ranked, target),
             Self::None => {}
             Self::Mrr(m) => m.add(ranked, target),
             Self::Ndcg(m) => m.add(ranked, target),
@@ -57,6 +118,7 @@ impl Metric {
     fn merge(&mut self, other: Self) {
         match (self, other) {
             (Self::Full(a), Self::Full(b)) => a.merge(b),
+            (Self::Beyond(a, _), Self::Beyond(b, _)) => a.merge(b),
             (Self::None, Self::None) => {}
             (Self::Mrr(a), Self::Mrr(b)) => a.merge(b),
             (Self::Ndcg(a), Self::Ndcg(b)) => a.merge(b),
@@ -66,6 +128,7 @@ impl Metric {
     }
     fn result(&self) -> f64 {
         match self {
+            Self::Beyond(m, i) => m.scores()[*i],
             Self::Full(_) | Self::None => 0.,
             Self::Mrr(m) => m.result(),
             Self::Ndcg(m) => m.result(),
@@ -96,7 +159,7 @@ impl Execution {
 
     /// The existing index must have been prepared for this algorithm with unit
     /// legacy IDF weight, once before its sequential trials. This method never
-    /// changes the index or scans the historical corpus.
+    /// changes the index. Use run_with_catalog to reuse catalog statistics across trials.
     pub fn run(
         &self,
         index: &VMISIndex,
@@ -105,13 +168,48 @@ impl Execution {
         business: bool,
         objective: Objective,
     ) -> anyhow::Result<RunResult> {
+        self.run_with_catalog(
+            index,
+            data,
+            model,
+            business,
+            objective,
+            Self::objective_catalog(index, objective),
+        )
+    }
+    /// Build immutable objective statistics once, outside the HPO trial loop.
+    pub fn objective_catalog(
+        index: &VMISIndex,
+        objective: Objective,
+    ) -> Option<std::sync::Arc<crate::metrics::beyond_accuracy::Catalog>> {
+        use crate::metrics::beyond_accuracy::Catalog;
+        match objective.metric() {
+            RankingMetric::Mrr | RankingMetric::Ndcg | RankingMetric::HitRate => None,
+            RankingMetric::IntraListDiversity => Some(std::sync::Arc::new(Catalog::from_sessions(
+                index.training_sessions(),
+            ))),
+            RankingMetric::Gini | RankingMetric::LongTailShare => Some(std::sync::Arc::new(
+                Catalog::from_items(index.training_items()),
+            )),
+            _ => Some(std::sync::Arc::new(Catalog::default())),
+        }
+    }
+    pub fn run_with_catalog(
+        &self,
+        index: &VMISIndex,
+        data: &EvaluationData,
+        model: &ModelConfig,
+        business: bool,
+        objective: Objective,
+        catalog: Option<std::sync::Arc<crate::metrics::beyond_accuracy::Catalog>>,
+    ) -> anyhow::Result<RunResult> {
         let (predictions, metric) = self.execute(
             index,
             data,
             model,
             business,
             objective.cutoff(),
-            &|| Metric::new(objective),
+            &|| Metric::new(objective, catalog.clone()),
             None,
         )?;
         Ok(RunResult {
@@ -126,9 +224,9 @@ impl Execution {
         model: &ModelConfig,
         business: bool,
         cutoff: usize,
-    ) -> anyhow::Result<(usize, [f64; 8])> {
-        let template = crate::metrics::evaluation_reporter::EvaluationReporter::from_items(
-            index.training_items(),
+    ) -> anyhow::Result<(usize, [f64; 15])> {
+        let template = crate::metrics::evaluation_reporter::EvaluationReporter::from_sessions(
+            index.training_sessions(),
             cutoff,
         );
         let (n, metric) = self.execute(

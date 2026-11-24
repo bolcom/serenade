@@ -1,3 +1,4 @@
+use super::beyond_accuracy::{BeyondAccuracy, Catalog, NAMES};
 use crate::io::{ItemId, Time, TrainingSessionId};
 use crate::metrics::coverage::Coverage;
 use crate::metrics::f1score::F1score;
@@ -8,9 +9,12 @@ use crate::metrics::popularity::Popularity;
 use crate::metrics::precision::Precision;
 use crate::metrics::recall::Recall;
 use crate::metrics::SessionMetric;
+use std::sync::Arc;
 
 pub struct EvaluationReporter {
     n: i32,
+    cutoff: usize,
+    pub beyond: BeyondAccuracy,
     mrr: Mrr,
     ndcg: Ndcg,
     hitrate: HitRate,
@@ -25,6 +29,8 @@ impl EvaluationReporter {
     pub fn empty(&self, cutoff: usize) -> Self {
         Self {
             n: 0,
+            cutoff,
+            beyond: self.beyond.empty(cutoff),
             mrr: Mrr::new(cutoff),
             ndcg: Ndcg::new(cutoff),
             hitrate: HitRate::new(cutoff),
@@ -37,6 +43,7 @@ impl EvaluationReporter {
     }
     pub fn merge(&mut self, other: Self) {
         self.n += other.n;
+        self.beyond.merge(other.beyond);
         self.mrr.merge(other.mrr);
         self.ndcg.merge(other.ndcg);
         self.hitrate.merge(other.hitrate);
@@ -48,9 +55,11 @@ impl EvaluationReporter {
     }
 
     /// Full-precision values in MRR, NDCG, hit rate, popularity, precision,
-    /// coverage, recall, F1 order. Formatting is the caller's responsibility.
-    pub fn all_scores(&self) -> [f64; 8] {
-        [
+    /// coverage, recall, F1, then beyond_accuracy::NAMES order.
+    /// Formatting is the caller's responsibility.
+    pub fn all_scores(&self) -> [f64; 15] {
+        let mut scores = [0.; 15];
+        scores[..8].copy_from_slice(&[
             self.mrr.result(),
             self.ndcg.result(),
             self.hitrate.result(),
@@ -59,7 +68,9 @@ impl EvaluationReporter {
             self.coverage.result(),
             self.recall.result(),
             self.f1.result(),
-        ]
+        ]);
+        scores[8..].copy_from_slice(&self.beyond.scores());
+        scores
     }
 
     pub fn scores(&self) -> [f64; 4] {
@@ -77,11 +88,33 @@ impl EvaluationReporter {
         training_df: &[(TrainingSessionId, ItemId, Time)],
         length: usize,
     ) -> EvaluationReporter {
-        Self::from_items(training_df.iter().map(|row| row.1), length)
+        let mut sessions = std::collections::BTreeMap::<u32, Vec<u64>>::new();
+        for &(session, item, _) in training_df {
+            sessions.entry(session).or_default().push(item);
+        }
+        Self::from_sessions(sessions.values().map(|s| s.as_slice()), length)
     }
 
+    pub fn from_sessions<'a>(
+        sessions: impl Iterator<Item = &'a [u64]> + Clone,
+        length: usize,
+    ) -> Self {
+        let catalog = Arc::new(Catalog::from_sessions(sessions.clone()));
+        Self::with_catalog(sessions.flat_map(|s| s.iter().copied()), catalog, length)
+    }
+
+    /// Without session membership, intra-list diversity is zero. Prefer from_sessions.
     pub fn from_items(items: impl Iterator<Item = u64> + Clone, length: usize) -> Self {
+        let catalog = Arc::new(Catalog::from_items(items.clone()));
+        Self::with_catalog(items, catalog, length)
+    }
+    fn with_catalog(
+        items: impl Iterator<Item = u64> + Clone,
+        catalog: Arc<Catalog>,
+        length: usize,
+    ) -> Self {
         let n = 0;
+        let beyond = BeyondAccuracy::new(catalog, length);
         let mrr = Mrr::new(length);
         let ndcg = Ndcg::new(length);
         let hitrate = HitRate::new(length);
@@ -93,6 +126,8 @@ impl EvaluationReporter {
 
         EvaluationReporter {
             n,
+            cutoff: length,
+            beyond,
             mrr,
             ndcg,
             hitrate,
@@ -108,6 +143,7 @@ impl EvaluationReporter {
 impl EvaluationReporter {
     pub fn add(&mut self, recommendations: &[u64], next_items: &[u64]) {
         self.n += 1;
+        self.beyond.add(recommendations, next_items);
         self.mrr.add(recommendations, next_items);
         self.ndcg.add(recommendations, next_items);
         self.hitrate.add(recommendations, next_items);
@@ -128,7 +164,7 @@ impl EvaluationReporter {
         let coverage_score = format!("{:.4}", self.coverage.result());
         let recall_score = format!("{:.4}", self.recall.result());
         let f1_score = format!("{:.4}", self.f1.result());
-        format!(
+        let legacy = format!(
             "{},{},{},{},{},{},{},{},{}",
             n,
             mrr_score,
@@ -139,6 +175,16 @@ impl EvaluationReporter {
             coverage_score,
             recall_score,
             f1_score
+        );
+        format!(
+            "{},{}",
+            legacy,
+            self.beyond
+                .scores()
+                .iter()
+                .map(|v| format!("{v:.4}"))
+                .collect::<Vec<_>>()
+                .join(",")
         )
     }
 
@@ -152,7 +198,7 @@ impl EvaluationReporter {
         let coverage_name = self.coverage.get_name();
         let recall_name = self.recall.get_name();
         let f1_name = self.f1.get_name();
-        format!(
+        let legacy = format!(
             "{},{},{},{},{},{},{},{},{}",
             n_name,
             mrr_name,
@@ -163,6 +209,15 @@ impl EvaluationReporter {
             coverage_name,
             recall_name,
             f1_name
+        );
+        format!(
+            "{},{}",
+            legacy,
+            NAMES
+                .iter()
+                .map(|n| format!("{n}@{}", self.cutoff))
+                .collect::<Vec<_>>()
+                .join(",")
         )
     }
 }

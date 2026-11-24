@@ -13,7 +13,7 @@ fn main() -> anyhow::Result<()> {
         serde_json::from_slice(&std::fs::read(&args[2])?)?;
     let mut results = BTreeMap::new();
     for (algorithm, points) in predictions {
-        let mut reporter = EvaluationReporter::from_items(index.training_items(), 20);
+        let mut reporter = EvaluationReporter::from_sessions(index.training_sessions(), 20);
         for (recommendations, targets) in points {
             reporter.add(&recommendations, &targets);
         }

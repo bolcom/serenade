@@ -379,6 +379,13 @@ fn run(args: Vec<String>) -> Result<()> {
             "Coverage",
             "Recall",
             "F1",
+            "MAP",
+            "Gini",
+            "ShannonEntropy",
+            "LongTailShare",
+            "IntraListDiversity",
+            "EmptyResultRate",
+            "FillRate",
         ]
         .into_iter()
         .zip(scores)
