@@ -10,7 +10,6 @@ use std::error::Error;
 use std::fs;
 use std::fs::File;
 use std::path::Path;
-use std::time::Instant;
 
 use crate::serialization as bincode;
 use apache_avro::from_value;
@@ -383,18 +382,8 @@ impl VMISIndex {
         let training_data_stats = TrainingDataStats::read_metadata(&metadata)
             .with_context(|| format!("{}: missing or invalid raw training statistics; regenerate training-stats.bin from the original training CSV or rebuild as a .vmis snapshot", metadata.display()))?;
 
-        println!(
-            "reading training data, determine items per training session {}",
-            &base_path
-        );
-        let start_time = Instant::now();
         let (item_to_top_sessions_ordered, item_to_idf_score, item_to_product_attributes) =
             create_item_indices_from_avro(&*(base_path.to_owned() + "/itemindex/"))?;
-        println!(
-            "indexing item indices: {} secs",
-            start_time.elapsed().as_secs()
-        );
-        let start_time = Instant::now();
         let (session_to_items_sorted, session_to_max_time_stamp) =
             create_session_indices_from_avro(&*(base_path.to_owned() + "/sessionindex/"))?;
         anyhow::ensure!(
@@ -404,10 +393,6 @@ impl VMISIndex {
                     .any(|items| !items.is_empty()),
             "{}: empty prediction index",
             base_path
-        );
-        println!(
-            "indexing session indices: {} secs",
-            start_time.elapsed().as_secs()
         );
 
         #[allow(non_snake_case)]
@@ -487,10 +472,6 @@ impl VMISIndex {
                     }
                 }
             }
-            println!(
-                " item_to_top_sessions_ordered.len():{}",
-                item_to_top_sessions_ordered.len()
-            );
             Ok((
                 item_to_top_sessions_ordered,
                 item_to_idf,

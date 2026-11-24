@@ -8,7 +8,12 @@ pub struct F1score {
     length: usize,
 }
 
-impl F1score {}
+impl F1score {
+    pub fn merge(&mut self, other: Self) {
+        self.precision.merge(other.precision);
+        self.recall.merge(other.recall);
+    }
+}
 
 impl F1score {
     pub fn new(length: usize) -> F1score {

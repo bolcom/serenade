@@ -15,6 +15,7 @@ class PackageReleaseTest(unittest.TestCase):
         for platform, target in (
             ("windows-x86_64", "x86_64-pc-windows-msvc"),
             ("linux-x86_64", "x86_64-unknown-linux-gnu"),
+            ("macos-x86_64", "x86_64-apple-darwin"),
             ("macos-aarch64", "aarch64-apple-darwin"),
         ):
             with self.subTest(platform=platform):
@@ -53,10 +54,16 @@ class PackageReleaseTest(unittest.TestCase):
             archive = root / "dist" / (package_name + extension)
             if suffix:
                 with zipfile.ZipFile(archive) as release:
+                    names = release.namelist() if suffix else release.getnames()
+                    self.assertEqual(sorted(Path(n).name for n in names if Path(n).name in package_release.BINS or n.endswith(".exe")), sorted(name + suffix for name in package_release.BINS))
+                    self.assertFalse(any("knn_benchmark" in n for n in names))
                     for name, content in licenses.items():
                         self.assertEqual(release.read(f"{package_name}/{name}"), content)
             else:
                 with tarfile.open(archive) as release:
+                    names = release.namelist() if suffix else release.getnames()
+                    self.assertEqual(sorted(Path(n).name for n in names if Path(n).name in package_release.BINS or n.endswith(".exe")), sorted(name + suffix for name in package_release.BINS))
+                    self.assertFalse(any("knn_benchmark" in n for n in names))
                     for name, content in licenses.items():
                         with release.extractfile(f"{package_name}/{name}") as license_file:
                             self.assertEqual(license_file.read(), content)

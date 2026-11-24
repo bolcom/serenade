@@ -1,7 +1,9 @@
 """Package only verified native applications. Uses Python's standard library."""
 import argparse
+import csv
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -26,17 +28,20 @@ def smoke(root, iterations=3):
                        check=True, timeout=120)
     algorithms = ["vmis", "sknn", "ssknn", "wsknn", "vsknn", "stan", "vsknn_stan"]
     config = "configs/hpo.toml"
-    run("evaluator", config, "vmis", "evaluation.json")
-    result = json.loads((root / "evaluation.json").read_text())["results"][0]
-    assert result["predictions"] > 0 and result["mrr_at_20"] > 0, result
+    def read_csv(name="evaluation-results.csv"):
+        with (root / name).open(newline="") as stream:
+            return list(csv.DictReader(stream))
+    run("evaluator", config, "vmis")
+    result = read_csv()[0]
+    assert int(result["predictions"]) > 0 and float(result["MRR@20"]) > 0, result
     import re
     legacy = re.sub(r"(?ms)^\[hyperparam\.algorithms\.[^\]]+\]\n.*?(?=^\[|\Z)", "", (root / config).read_text())
     legacy = legacy.replace('algorithm = "vmis"\n', '').replace('num_trials = 50', 'num_trials = 3')
     legacy = legacy.replace('output_dir = "hpo-results"\n', '')
     (root / "legacy.toml").write_text(legacy)
     run("evaluator", "legacy.toml")
-    legacy_result = json.loads((root / "evaluation-results.json").read_text())["results"][0]
-    for key in ["algorithm", "predictions", "mrr_at_20", "ndcg_at_20", "hitrate_at_20", "coverage_at_20"]:
+    legacy_result = read_csv()[0]
+    for key in ["algorithm", "predictions", "MRR@20", "NDCG@20", "HitRate@20", "Coverage@20"]:
         assert legacy_result[key] == result[key]
     run("tpe_hyperparameter_optm", "legacy.toml")
     assert [p.name for p in (root / "hpo-results").glob("*.toml")] == ["vmis.toml"]
@@ -51,17 +56,21 @@ def smoke(root, iterations=3):
     run("tpe_hyperparameter_optm", "smoke.toml")
     assert sorted(p.stem for p in (root / "hpo").glob("*.toml")) == sorted(algorithms)
     run("evaluator", "hpo")
+    combined_rows = {r["algorithm"]: r for r in read_csv()}
+    run("evaluator", "hpo", "--benchmark", "--iterations", "2", "--warmup", "1", "--workers", "2", "--output", "benchmark.csv")
+    assert len(read_csv("benchmark.csv")) == len(algorithms)
     for algorithm in algorithms:
         best = json.loads((root / f"hpo/{algorithm}.json").read_text())
         assert len(best["trials"]) == iterations, best
         generated = root / f"hpo/{algorithm}.toml"
         run("evaluator", str(generated))
-        reloaded = json.loads((root / "evaluation-results.json").read_text())
-        combined = json.loads((root / f"hpo/{algorithm}.evaluation.json").read_text())
-        for key in ["mrr_at_20", "ndcg_at_20", "hitrate_at_20", "coverage_at_20", "predictions"]:
-            assert reloaded["results"][0][key] == combined["results"][0][key]
-        assert reloaded["model_configurations"][0]["knn"]["algorithm"].lower().replace("_", "") == algorithm.replace("_", "")
-        model = reloaded["model_configurations"][0]
+        reloaded = read_csv()[0]
+        combined = combined_rows[algorithm]
+        for key in ["MRR@20", "NDCG@20", "HitRate@20", "Coverage@20", "Popularity@20", "Precision@20", "Recall@20", "F1@20", "predictions"]:
+            assert math.isclose(float(reloaded[key]), float(combined[key]), rel_tol=1e-12, abs_tol=1e-12), (algorithm, key, reloaded[key], combined[key])
+        assert reloaded["algorithm"] == algorithm
+        model = {key: json.loads(value) for key, value in reloaded.items() if key in ["m_most_recent_sessions", "neighborhood_size_k", "max_items_in_session", "idf_weighting"]}
+        model["knn"] = {key: json.loads(reloaded["knn_" + key]) for key in best["best_hyperparameters"] if key not in model or (key == "idf_weighting" and algorithm != "vmis")}
         for parameter, value in best["best_hyperparameters"].items():
             section = model if parameter in ["m_most_recent_sessions", "neighborhood_size_k", "max_items_in_session"] or (parameter == "idf_weighting" and algorithm == "vmis") else model["knn"]
             assert section[parameter] == value, (algorithm, parameter, section, value)
@@ -69,8 +78,8 @@ def smoke(root, iterations=3):
         validation = generated.read_text().replace('test_data_path = "assets/example/test.txt"',
                                                    'test_data_path = "assets/example/valid.txt"')
         (root / "validation.toml").write_text(validation)
-        run("evaluator", "validation.toml", algorithm, "validation.json")
-        assert json.loads((root / "validation.json").read_text())["results"][0]["mrr_at_20"] == best["best_validation_mrr_at_20"]
+        run("evaluator", "validation.toml", algorithm, "--output", "validation.csv")
+        assert float(read_csv("validation.csv")[0]["MRR@20"]) == best["best_validation_mrr_at_20"]
         # The unchanged generated file serves the same selected model.
         with (root / "server.log").open("w") as log:
             process = subprocess.Popen([str(root / ("serving" + suffix)), str(generated)],

@@ -1,4 +1,4 @@
-//! Parallel objective evaluation over borrowed, immutable corpus data.
+//! Shared parallel prediction execution over borrowed, immutable corpus data.
 use super::EvaluationData;
 use crate::{
     config::ModelConfig,
@@ -28,9 +28,11 @@ struct Buffers {
     items: Vec<u64>,
     ranked: Vec<u64>,
 }
-// Select exactly one accumulator; no catalog statistics, predictions or timings
-// are retained. Each metric keeps its established recommendation semantics.
+// HPO selects one objective accumulator without catalog statistics or timings.
+// Quality shares catalog statistics; performance passes retain no metric state.
 enum Metric {
+    Full(crate::metrics::evaluation_reporter::EvaluationReporter),
+    None,
     Mrr(Mrr),
     Ndcg(Ndcg),
     HitRate(HitRate),
@@ -45,6 +47,8 @@ impl Metric {
     }
     fn add(&mut self, ranked: &[u64], target: &[u64]) {
         match self {
+            Self::Full(m) => m.add(ranked, target),
+            Self::None => {}
             Self::Mrr(m) => m.add(ranked, target),
             Self::Ndcg(m) => m.add(ranked, target),
             Self::HitRate(m) => m.add(ranked, target),
@@ -52,6 +56,8 @@ impl Metric {
     }
     fn merge(&mut self, other: Self) {
         match (self, other) {
+            (Self::Full(a), Self::Full(b)) => a.merge(b),
+            (Self::None, Self::None) => {}
             (Self::Mrr(a), Self::Mrr(b)) => a.merge(b),
             (Self::Ndcg(a), Self::Ndcg(b)) => a.merge(b),
             (Self::HitRate(a), Self::HitRate(b)) => a.merge(b),
@@ -60,6 +66,7 @@ impl Metric {
     }
     fn result(&self) -> f64 {
         match self {
+            Self::Full(_) | Self::None => 0.,
             Self::Mrr(m) => m.result(),
             Self::Ndcg(m) => m.result(),
             Self::HitRate(m) => m.result(),
@@ -98,8 +105,83 @@ impl Execution {
         business: bool,
         objective: Objective,
     ) -> anyhow::Result<RunResult> {
+        let (predictions, metric) = self.execute(
+            index,
+            data,
+            model,
+            business,
+            objective.cutoff(),
+            &|| Metric::new(objective),
+            None,
+        )?;
+        Ok(RunResult {
+            predictions,
+            objective: metric.result(),
+        })
+    }
+    pub fn quality(
+        &self,
+        index: &VMISIndex,
+        data: &EvaluationData,
+        model: &ModelConfig,
+        business: bool,
+        cutoff: usize,
+    ) -> anyhow::Result<(usize, [f64; 8])> {
+        let template = crate::metrics::evaluation_reporter::EvaluationReporter::from_items(
+            index.training_items(),
+            cutoff,
+        );
+        let (n, metric) = self.execute(
+            index,
+            data,
+            model,
+            business,
+            cutoff,
+            &|| Metric::Full(template.empty(cutoff)),
+            None,
+        )?;
+        let Metric::Full(reporter) = metric else {
+            unreachable!()
+        };
+        Ok((n, reporter.all_scores()))
+    }
+    /// Latencies require a dedicated single-worker executor. Throughput retains no samples.
+    pub fn predictions(
+        &self,
+        index: &VMISIndex,
+        data: &EvaluationData,
+        model: &ModelConfig,
+        business: bool,
+        cutoff: usize,
+        latencies: Option<&Mutex<Vec<u64>>>,
+    ) -> anyhow::Result<usize> {
+        anyhow::ensure!(
+            latencies.is_none() || self.workers() == 1,
+            "latency measurement requires one worker"
+        );
+        Ok(self
+            .execute(
+                index,
+                data,
+                model,
+                business,
+                cutoff,
+                &|| Metric::None,
+                latencies,
+            )?
+            .0)
+    }
+    fn execute(
+        &self,
+        index: &VMISIndex,
+        data: &EvaluationData,
+        model: &ModelConfig,
+        business: bool,
+        cutoff: usize,
+        make: &(impl Fn() -> Metric + Sync),
+        latencies: Option<&Mutex<Vec<u64>>>,
+    ) -> anyhow::Result<(usize, Metric)> {
         let view = ScoringView::new(index, model).map_err(anyhow::Error::msg)?;
-        let cutoff = objective.cutoff();
         // At most one active chunk per worker. Results carry only accumulators;
         // prediction allocations stay in their worker slots across trials.
         let chunk = data.sessions.len().div_ceil(self.workers()).max(1);
@@ -115,7 +197,8 @@ impl Execution {
                         items,
                         ranked,
                     } = &mut *buffers;
-                    let mut metric = Metric::new(objective);
+                    let mut samples = latencies.map(|s| s.lock().unwrap());
+                    let mut metric = make();
                     let mut predictions = 0;
                     for events in sessions {
                         items.clear();
@@ -123,6 +206,7 @@ impl Execution {
                         for state in 1..items.len() {
                             let current =
                                 &items[state.saturating_sub(model.max_items_in_session)..state];
+                            let started = latencies.map(|_| std::time::Instant::now());
                             let recommendations = vmisknn::predict_with_model_scratch(
                                 index,
                                 &view,
@@ -135,6 +219,14 @@ impl Execution {
                                 events[state - 1].1,
                                 scratch,
                             );
+                            if let Some(samples) = &mut samples {
+                                samples.push(started.unwrap().elapsed().as_nanos() as u64);
+                            }
+                            if matches!(metric, Metric::None) {
+                                std::hint::black_box(recommendations);
+                                predictions += 1;
+                                continue;
+                            }
                             ranked.clear();
                             ranked.extend(recommendations.into_sorted_vec().iter().map(|s| s.id));
                             metric.add(ranked, &items[state..]);
@@ -144,16 +236,13 @@ impl Execution {
                     (predictions, metric)
                 })
                 .reduce(
-                    || (0, Metric::new(objective)),
+                    || (0, make()),
                     |(n, mut a), (m, b)| {
                         a.merge(b);
                         (n + m, a)
                     },
                 )
         });
-        Ok(RunResult {
-            predictions,
-            objective: metric.result(),
-        })
+        Ok((predictions, metric))
     }
 }

@@ -143,14 +143,18 @@ fn all_algorithms_optimize_selected_metric_and_generate_usable_models() {
                 result["best_validation_score"].as_f64().unwrap()
             );
         }
-        run(Command::new(env!("CARGO_BIN_EXE_evaluator")).arg(&output));
-        for result in results {
-            let evaluation = json(output.join(format!(
-                "{}.evaluation.json",
-                result["algorithm"].as_str().unwrap()
-            )));
-            assert_eq!(evaluation["cutoff"], 20);
-            assert!(evaluation["results"][0]["mrr_at_20"].is_number());
+        let csv_path = output.join("evaluation.csv");
+        run(Command::new(env!("CARGO_BIN_EXE_evaluator"))
+            .arg(&output)
+            .arg("--output")
+            .arg(&csv_path));
+        let mut reader = csv::Reader::from_path(csv_path).unwrap();
+        let header = reader.headers().unwrap().clone();
+        let rows: Vec<_> = reader.records().map(Result::unwrap).collect();
+        assert_eq!(rows.len(), results.len());
+        let column = header.iter().position(|h| h == "MRR@20").unwrap();
+        for row in rows {
+            assert!(row[column].parse::<f64>().unwrap().is_finite());
         }
     }
     std::fs::remove_dir_all(root).unwrap();

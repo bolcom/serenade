@@ -51,9 +51,8 @@ These files are not required by the GitHub release workflow:
 | `scale_benchmark_sample.py` | Scales the bundled sample and produces throughput query prefixes. |
 | `test_scale_benchmark_sample.py` | Tests bundled-sample scaling. |
 
-Benchmark usage is documented in [docs/knn-benchmark.md](../docs/knn-benchmark.md).
+Evaluation and benchmark commands are documented in the [README](../README.md#offline-evaluation-and-optional-benchmarking).
 
-For commands to expand the bundled train, validation and test splits to millions
-of sessions or billions of interactions, see
-[synthetic scaling](../docs/knn-benchmark.md#synthetic-scaling). That section also
-explains the different output formats of the two scaling scripts.
+Scale extracted train/valid/test splits with `python scripts/scale_local_datasets.py --input-dir assets/example --output target/scaled --factor 100 --catalog-factor 10`.
+This writes TSV event files with remapped sessions and catalogs. The sample scaler
+instead writes a training TSV and query prefixes; use `--help` for its options.

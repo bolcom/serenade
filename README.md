@@ -18,21 +18,44 @@ VMIS-kNN — Scalable recommendation algorithm. An efficient adaptation of the s
 
 Serenade — Production recommendation system. A scalable, stateful recommendation service built around VMIS-kNN, combining real-time session management, low-latency recommendation serving, and efficient resource utilization. Originally deployed at bol.com, Serenade demonstrates that high-quality session-based nearest-neighbor recommendations can operate at industrial scale with low latency and modest computational resources.
 
-## Running the kNN benchmarks
+## Offline evaluation and optional benchmarking
 
-```powershell
-cargo run --release --example knn_benchmark -- target/scaled-local-100x-10x-items/train.tsv target/scaled-local-100x-10x-items/valid.tsv all --iterations 3 --warmup 1 --raw target/knn-benchmark/iterations.csv --snapshot-dir target/knn-benchmark/snapshots
+**TPE hyperparameter optimization → Offline evaluation (with optional benchmarking) → Real-time serving**
+
+Use existing application configurations or the TOML files exported by HPO:
+
+```sh
+cargo run --release --bin evaluator -- hpo-results/vmis.toml --output quality.csv
+cargo run --release --bin evaluator -- hpo-results/vmis.toml hpo-results/stan.toml --output comparison.csv
+cargo run --release --bin evaluator -- hpo-results --benchmark --workers 4 --warmup 1 --iterations 5 --snapshot-dir target/snapshots --output benchmark.csv
 ```
 
-Use actual training and validation paths. All seven algorithms write one consolidated
-CSV to `target/knn-benchmark/results.csv`, with a companion metadata JSON file.
-Timings report medians and ranges across independent measured iterations; warm-ups
-are excluded. Progress goes to stderr (`--quiet` suppresses it).
+A directory selects its TOML files in sorted order. Multiple configurations of the
+same algorithm are supported. `--algorithm all` compares all seven algorithms using
+the configuration's shared limits and the other algorithms' defaults. Quality-only
+evaluation is the default, with one parallel pass computing all eight metrics at 20.
+`--workers 0` uses available CPUs; otherwise the configuration's
+`hyperparam.evaluation_workers` applies. Configurations run sequentially; matching
+datasets and fixed capacities reuse one training index and evaluation dataset.
+`data.index_capacity` remains independent of model parameters; an excessive `m`
+is rejected before loading data.
 
-See [benchmark documentation](docs/knn-benchmark.md) for options, multiple datasets,
-measurement boundaries, quality definitions, memory estimates and synthetic scaling.
-The `prediction_benchmark` example measures VMIS throughput and executor performance,
-with `BENCH_SAMPLE_CAPACITY` samples preallocated per worker.
+The single CSV (default `evaluation-results.csv`) identifies each dataset and
+configuration, effective model parameters (`knn_` prefixes algorithm settings),
+workers and all quality metrics. Performance cells remain empty unless `--benchmark`
+is enabled. Benchmarking rebuilds the fixed-capacity index each iteration, measures
+single-worker prediction latency separately from parallel prediction throughput,
+and reports medians across measured iterations, excluding warm-ups. Defaults are
+one warm-up and three measured iterations. Latency percentiles are calculated per
+iteration before taking their medians. Quality is computed only once. Construction
+timing includes corpus loading and scoring preparation; OS caches are not flushed.
+Total evaluation wall time
+includes construction and performance passes, excluding the one-off quality pass
+and progress output. Snapshot serialization, loading and size are measured only
+with `--snapshot-dir`; the original index is released before loading its snapshot.
+Owned heap estimates exclude allocator overhead, transient scratch space and RSS.
+Progress goes to stderr outside measured sections. Short runs and Windows worker
+scaling are functional regression checks, not evidence of production scalability.
 
 ## Performance at scale
 
@@ -77,7 +100,7 @@ Serenade provides a complete workflow for developing, evaluating, and serving se
 
 The intended workflow is straightforward:
 
-**TPE hyperparameter optimization → Offline evaluation → Real-time serving**
+**TPE hyperparameter optimization → Offline evaluation (with optional benchmarking) → Real-time serving**
 
 Each optimized algorithm produces a single configuration file that can be used directly by both the evaluator and serving applications.
 

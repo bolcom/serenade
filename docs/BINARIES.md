@@ -36,9 +36,11 @@ The default HPO configuration runs 50 trials for each of the seven algorithms. E
 
 HPO writes one complete `ALGORITHM.toml` per enabled algorithm to `hpo-results`, plus trial and comparison reports. The same TOML works for evaluation and serving. Choose the algorithm using validation results before evaluating its held-out test performance.
 
-To optimize only STAN, append `stan` to the HPO command. To evaluate every generated configuration, run `./evaluator hpo-results` (PowerShell: `.\evaluator.exe hpo-results`). Directory evaluation writes `ALGORITHM.evaluation.json` beside each TOML. Use a fresh output directory when changing the enabled algorithms, because reruns leave older algorithms' files in place.
+To optimize only STAN, append `stan` to the HPO command. To evaluate every generated configuration, run `./evaluator hpo-results` (PowerShell: `.\evaluator.exe hpo-results`). Evaluation writes one `evaluation-results.csv` for the entire run, including all eight quality metrics and effective parameters. Use a fresh output directory when changing the enabled algorithms, because reruns leave older algorithms' files in place.
 
-The standalone evaluator reports ranking metrics at 20. HPO uses the cutoff in its configured objective; the serving response length is controlled separately by `model.num_items_to_recommend`.
+Use `./evaluator hpo-results --benchmark --workers 4 --warmup 1 --iterations 3 --output benchmark.csv` for optional performance measurements. Add `--snapshot-dir snapshots` to measure serialization and loading. Benchmark columns report medians excluding warm-ups; prediction latency uses one worker and throughput uses the selected worker count. Without benchmarking, performance cells are empty.
+
+The evaluator reports all eight quality metrics at 20. HPO uses the cutoff in its configured objective; the serving response length is controlled separately by `model.num_items_to_recommend`.
 
 ## Request recommendations
 
