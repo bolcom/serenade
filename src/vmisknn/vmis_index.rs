@@ -215,6 +215,10 @@ impl VMISIndex {
         Ok(())
     }
 
+    pub fn training_sessions(&self) -> impl Iterator<Item = &[u64]> + Clone {
+        self.session_to_items_sorted.iter().map(Vec::as_slice)
+    }
+
     /// Historical events for evaluation statistics; no second event corpus is stored.
     pub fn training_items(&self) -> impl Iterator<Item = u64> + Clone + '_ {
         self.session_to_items_sorted.iter().flatten().copied()

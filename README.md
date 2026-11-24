@@ -165,9 +165,34 @@ evaluator --train workspace/train.txt --predictions predictions.txt
 Each line contains comma-separated recommendation IDs, a semicolon, then
 comma-separated next-item IDs: `10,20,30;20,40`. Empty recommendation lists and
 trailing commas are accepted; next-item lists must contain at least one ID.
-This mode prints the evaluation count and all eight metrics at 20 as CSV to stdout.
+This mode prints the evaluation count and all fifteen metrics at 20 as CSV to stdout.
 Malformed prediction rows fail with the filename and line number.
+See [metric definitions and RecBole compatibility](docs/METRICS.md) for the new metrics and HPO directions.
 These commands replace the former `build_index` and `evaluate_file` executables.
+
+## Supported evaluation metrics
+
+The evaluator reports all metrics below at K=20; K is the maximum number of recommendations considered. Relevant items are the remaining items in the held-out session, except MRR and HitRate, which assess the immediate next item.
+
+| Metric | What it measures |
+| --- | --- |
+| MRR@K | Measures how highly the immediate next item ranks, using its reciprocal rank and assigning zero when it is absent. |
+| NDCG@K | Measures how well relevant items rank near the top, using Serenade's historical discount formula and normalizing against an ideal ranking. |
+| HitRate@K | Measures the fraction of prediction cases where the immediate next item appears among the top K recommendations. |
+| Precision@K | Measures how many of the K recommendation slots contain relevant items, rewarding accurate recommendations. |
+| Recall@K | Measures the fraction of remaining session items retrieved among the top K recommendations. |
+| F1@K | Balances precision and recall through the harmonic mean of their evaluation-wide averages. |
+| MAP@K | Measures precision at each relevant rank, rewarding lists that retrieve multiple relevant items early. |
+| Popularity@K | Measures the average training frequency of recommended items, normalized by the most frequent item's count, to reveal popularity bias. |
+| Coverage@K | Measures the fraction of distinct training items that appear in recommendations across all prediction cases. |
+| Gini@K | Measures how unequally recommendation exposure is distributed across the catalog; lower values indicate more even exposure. |
+| ShannonEntropy@K | Measures the spread of recommendation exposure using RecBole's entropy convention: natural-log entropy divided by the number of distinct exposed items. |
+| LongTailShare@K | Measures how often less-popular items are recommended as a share of K slots, complementing average popularity with a percentage based on the least-frequent 10% of training items. |
+| IntraListDiversity@K | Measures how different items within each recommendation list are, using cosine distance between their training-session interaction vectors. |
+| EmptyResultRate@K | Measures the fraction of prediction cases that return no recommendations, highlighting failures to produce results. |
+| FillRate@K | Measures the fraction of K recommendation slots filled with distinct items, highlighting incomplete result lists. |
+
+See [metric definitions and RecBole compatibility](docs/METRICS.md) for formulas, edge cases and supported HPO objectives.
 
 ## Research and citation
 

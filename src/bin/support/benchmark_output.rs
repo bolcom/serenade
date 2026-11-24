@@ -199,7 +199,8 @@ pub fn result_tables(rows: &[Row], benchmark: bool) -> String {
             dataset
         ));
     }
-    sections.push("Quality: unitless means over prediction cases; Coverage = distinct recommended items / distinct training items.".into());
+    sections
+        .push("Quality: per-case means, except global catalog coverage, Gini and entropy.".into());
     let render = |title: &str, specs: &[(&str, &str, usize)]| {
         let mut headers = vec!["Model", "Algorithm"];
         headers.extend(specs.iter().map(|s| s.1));
@@ -222,6 +223,7 @@ pub fn result_tables(rows: &[Row], benchmark: bool) -> String {
             .collect();
         format!("{title}\n{}", table(&headers, &cells))
     };
+    sections.push("At K=20: Pop = Popularity@20, Cov = Coverage@20, Entropy = ShannonEntropy@20, Tail = LongTailShare@20, ILD = IntraListDiversity@20, Empty = EmptyResultRate@20, Fill = FillRate@20.".into());
     sections.push(render(
         "Recommendation quality",
         &[
@@ -229,11 +231,23 @@ pub fn result_tables(rows: &[Row], benchmark: bool) -> String {
             ("MRR@20", "MRR@20", 4),
             ("NDCG@20", "NDCG@20", 4),
             ("HitRate@20", "HitRate@20", 4),
-            ("Popularity@20", "Popularity@20", 4),
             ("Precision@20", "Precision@20", 4),
-            ("Coverage@20", "Coverage@20", 4),
             ("Recall@20", "Recall@20", 4),
             ("F1@20", "F1@20", 4),
+            ("MAP@20", "MAP@20", 4),
+        ],
+    ));
+    sections.push(render(
+        "Catalog exposure, diversity and result completeness",
+        &[
+            ("Popularity@20", "Pop@20", 4),
+            ("Coverage@20", "Cov@20", 4),
+            ("Gini@20", "Gini@20", 4),
+            ("ShannonEntropy@20", "Entropy@20", 4),
+            ("LongTailShare@20", "Tail@20", 4),
+            ("IntraListDiversity@20", "ILD@20", 4),
+            ("EmptyResultRate@20", "Empty@20", 4),
+            ("FillRate@20", "Fill@20", 4),
         ],
     ));
     if benchmark {

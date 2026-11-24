@@ -19,7 +19,7 @@ output_dir = "."
 enable_business_logic = false
 ```
 
-Paths in configuration files resolve relative to that file. CLI paths resolve from the working directory. Supported objectives are `mrr@k`, `ndcg@k`, and `hitrate@k`, where `k` is a positive integer; the default is `mrr@20`. MRR and HitRate assess the next item; NDCG assesses remaining session items using Serenade's discount formula. Compare NDCG results within Serenade because definitions differ across libraries.
+Paths in configuration files resolve relative to that file. CLI paths resolve from the working directory. Supported objectives are `mrr@k`, `ndcg@k`, `hitrate@k`, `map@k`, `gini@k`, `shannonentropy@k`, `longtailshare@k`, `intralistdiversity@k`, `emptyresultrate@k`, and `fillrate@k`, where `k` is a positive integer; the default is `mrr@20`. MRR and HitRate assess the next item; NDCG assesses remaining session items using Serenade's discount formula. Compare NDCG results within Serenade because definitions differ across libraries. Gini and empty-result rate are minimized; all other objectives are maximized. See [metric definitions and RecBole compatibility](METRICS.md).
 
 Algorithms are `vmis`, `sknn`, `ssknn`, `wsknn`, `vsknn`, `stan`, and `vsknn_stan`. Set `enabled = false` in an algorithm's existing section to skip it. At least one must remain enabled.
 
