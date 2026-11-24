@@ -1,4 +1,4 @@
-"""Detect explicit version increases or bump the patch version for main releases."""
+"""Validate or bump the package version on a release PR."""
 from pathlib import Path
 import re
 import subprocess
@@ -27,6 +27,10 @@ def bump_version(previous, root=Path(".")):
     lock_text = lockfile.read_text()
     package = tomllib.loads(manifest_text)["package"]
     current = package["version"]
+    locked = [entry["version"] for entry in tomllib.loads(lock_text).get("package", [])
+              if entry["name"] == package["name"]]
+    if locked != [current]:
+        raise ValueError("Root package versions in Cargo.toml and Cargo.lock must match")
     tag = release_tag(previous, current)
     if tag:
         return tag  # Preserve an explicit version increase.

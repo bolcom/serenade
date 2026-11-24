@@ -60,6 +60,13 @@ Run from a writable directory: HPO and evaluation write reports, and serving cre
 
 ## Publishing a new version
 
-Increase the package version in `Cargo.toml` and the Serenade entry in `Cargo.lock`, then merge the pull request into `main`. The Binary release workflow compares the version before and after the push. A higher stable `major.minor.patch` version triggers tests and builds for all four platforms, followed by automatic creation of the version tag and GitHub Release with archives and checksums. No manual tag or release is needed. Unchanged or lower versions skip the builds on `main`.
+Open a non-draft `release/*` PR into `main` and update it with the latest
+`main`. In Actions, run **Binary release** on **main** with the PR number.
+The workflow bumps the patch version in both Cargo files on the PR branch,
+builds and tests all four platforms, squash-merges the tested PR, then tags
+and publishes the same binaries. An explicit version increase is preserved.
 
-Release branches (`release/**`) still run validation builds without publishing. Tag pushes and manual workflow runs remain available for retries. If a build fails, rerun the failed workflow jobs. If publication fails after creating a draft, inspect and remove the incomplete draft before rerunning; existing releases are never overwritten.
+This is the only release workflow and trigger. Failed builds leave the PR open.
+If either branch changes during the build, update the PR and restart. Required
+reviews and checks still apply. See [release instructions](../scripts/README.md#release-a-pr)
+for repository settings and retry details.

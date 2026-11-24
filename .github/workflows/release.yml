@@ -2,30 +2,28 @@ name: Binary release
 on:
   workflow_dispatch:
     inputs:
-      publish:
-        description: Publish a GitHub Release after all builds pass
-        type: boolean
-        default: false
-      release_tag:
-        description: Existing version tag to publish (for example v0.3.3)
+      release_pr:
+        description: Release PR number; bump, build, merge and publish (run on main)
         type: string
-        required: false
-  push:
-    branches: ['main', 'release/**']
-    tags: ['v*.*.*']
+        required: true
 permissions:
   contents: read
 concurrency:
-  group: binary-release-${{ inputs.release_tag || github.ref_name }}
+  group: binary-release
   cancel-in-progress: false
 jobs:
   prepare:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      pull-requests: read
+      statuses: write
     outputs:
-      ref: ${{ steps.resolve.outputs.ref }}
-      version: ${{ steps.resolve.outputs.version }}
-      publish: ${{ steps.resolve.outputs.publish }}
-      build: ${{ steps.resolve.outputs.build }}
+      ref: ${{ steps.pr.outputs.ref }}
+      version: ${{ steps.pr.outputs.version }}
+      pr: ${{ steps.pr.outputs.pr }}
+      base: ${{ steps.pr.outputs.base }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -33,64 +31,17 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Test release version detection
-        run: python -m unittest discover -s scripts -p test_release_version.py
-      - name: Resolve release tag and immutable build commit
-        id: resolve
-        env:
-          MANUAL_PUBLISH: ${{ inputs.publish }}
-          REQUESTED_TAG: ${{ inputs.release_tag }}
-          BEFORE_SHA: ${{ github.event.before }}
-        shell: bash
+      - name: Test release automation
         run: |
-          set -euo pipefail
-          publish=false
-          tag=''
-          build=true
-          automatic=false
-          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/tags/* ]]; then
-            publish=true
-            tag="$GITHUB_REF_NAME"
-          elif [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]; then
-            tag=$(python scripts/release_version.py "$BEFORE_SHA" "$GITHUB_SHA")
-            if [[ -n "$tag" ]]; then
-              publish=true
-              automatic=true
-            else
-              build=false
-            fi
-          elif [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$MANUAL_PUBLISH" == true ]]; then
-            publish=true
-            tag="$REQUESTED_TAG"
-          elif [[ -n "$REQUESTED_TAG" ]]; then
-            echo 'Select Publish a GitHub Release to use a release tag.' >&2
-            exit 1
-          fi
-          ref="$GITHUB_SHA"
-          version="validation-$GITHUB_SHA"
-          if [[ "$publish" == true ]]; then
-            if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo 'Publishing requires an existing tag such as v0.3.3.' >&2
-              exit 1
-            fi
-            if [[ "$automatic" != true ]]; then
-              ref=$(git rev-parse --verify "refs/tags/$tag^{commit}")
-            fi
-            if git show-ref --verify --quiet "refs/tags/$tag"; then
-              tagged_ref=$(git rev-parse "refs/tags/$tag^{commit}")
-              if [[ "$tagged_ref" != "$ref" ]]; then
-                echo "Tag $tag already points to a different commit." >&2
-                exit 1
-              fi
-            fi
-            version="$tag"
-          fi
-          echo "build=$build" >> "$GITHUB_OUTPUT"
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          python -m unittest discover -s scripts -p test_release_version.py
+          python -m unittest discover -s scripts -p test_release_pr.py
+      - name: Prepare release PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PR: ${{ inputs.release_pr }}
+        run: python scripts/release_pr.py prepare --pr "$RELEASE_PR"
   build:
-    if: needs.prepare.outputs.build == 'true'
     needs: prepare
     strategy:
       fail-fast: false
@@ -156,9 +107,33 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 14
-  publish:
-    if: needs.prepare.outputs.publish == 'true'
+  merge:
+    if: always() && needs.prepare.result == 'success'
     needs: [prepare, build]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      pull-requests: write
+      statuses: write
+    outputs:
+      ref: ${{ steps.merge.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Merge tested release PR
+        id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PR: ${{ needs.prepare.outputs.pr }}
+          TESTED_HEAD: ${{ needs.prepare.outputs.ref }}
+          TESTED_BASE: ${{ needs.prepare.outputs.base }}
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: python scripts/release_pr.py merge --pr "$RELEASE_PR" --head "$TESTED_HEAD" --base "$TESTED_BASE" --result "$BUILD_RESULT"
+  publish:
+    if: needs.merge.result == 'success'
+    needs: [prepare, build, merge]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -173,7 +148,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.prepare.outputs.version }}
-          RELEASE_SHA: ${{ needs.prepare.outputs.ref }}
+          RELEASE_SHA: ${{ needs.merge.outputs.ref }}
         shell: bash
         run: |
           set -euo pipefail
@@ -191,6 +166,15 @@ jobs:
             echo 'Release already exists; inspect it and explicitly remove an incomplete draft before retrying.' >&2
             exit 1
           fi
-          gh release create "$TAG" --target "$RELEASE_SHA" --draft --title "Serenade $TAG" --generate-notes
+          # Never reuse a tag that identifies an untested commit.
+          if tagged_sha=$(gh api "repos/$GH_REPO/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null); then
+            if [[ "$tagged_sha" != "$RELEASE_SHA" ]]; then
+              echo "Tag $TAG points to a different commit." >&2
+              exit 1
+            fi
+          else
+            gh api "repos/$GH_REPO/git/refs" --method POST -f "ref=refs/tags/$TAG" -f "sha=$RELEASE_SHA"
+          fi
+          gh release create "$TAG" --verify-tag --target "$RELEASE_SHA" --draft --title "Serenade $TAG" --generate-notes
           gh release upload "$TAG" dist/*
           gh release edit "$TAG" --draft=false

@@ -39,6 +39,15 @@ class ReleaseVersionTests(unittest.TestCase):
                 bump_version("0.3.5", root)
             self.assertEqual((root / "Cargo.toml").read_bytes(), before)
 
+    def test_explicit_version_requires_matching_lockfile(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.fixture(root, "0.4.0")
+            lock = root / "Cargo.lock"
+            lock.write_text(lock.read_text().replace('version = "0.4.0"', 'version = "0.3.5"'))
+            with self.assertRaisesRegex(ValueError, "must match"):
+                bump_version("0.3.5", root)
+
     def test_increases(self):
         for previous, current in [("0.3.3", "0.3.4"), ("0.3.9", "0.3.10"), ("0.9.9", "1.0.0")]:
             with self.subTest(current=current):
