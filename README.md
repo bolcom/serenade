@@ -61,9 +61,9 @@ Building on the original VMIS-kNN research, **we extend Serenade with scalable a
 | **STAN** | [Sequence and Time Aware Neighborhood for Session-based Recommendations: STAN](https://doi.org/10.1145/3331184.3331322) | SIGIR '19 |
 | **VSKNN-STAN (VSTAN)** | [Empirical analysis of session-based recommendation algorithms: A comparison of neural and non-neural approaches](https://doi.org/10.1007/s11257-020-09277-1) | UMUAI '21 |
 
-**Our contribution is to make these established algorithms scalable by adapting their neighbor retrieval to VMIS-kNN's bounded, recency-ordered index and early-stopping strategy**, while preserving each algorithm's distinctive scoring method. With fixed retrieval limits, query-time neighbor retrieval scales with the length of the active session rather than the size of the historical session corpus, enabling these algorithms to benefit from VMIS-kNN's scalability.
+As described in [Illoominate (Kersbergen et al., 2026)](https://doi.org/10.1145/3828670), session-based kNN-based recommendation can be decomposed into two functions: neighbor retrieval ($f_{ret}$) and item scoring ($f_{pred}$).
 
-`VMISIndex` is the shared indexing infrastructure; VMIS-kNN is the original algorithm, and Serenade is the system that executes all seven algorithms. Only recent candidate sampling is supported. S-SKNN reuses SKNN neighbors and weights their item contributions by the latest shared current-session event. WSKNN weights current-session positions and neighbor contributions, retaining repeated historical events. See [configuration](docs/CONFIG.md) for supported settings and implementation differences.
+**Our contribution is to introduce scalable adaptations of established session-based kNN algorithms by leveraging the VMISIndex for neighbor retrieval, while preserving their distinctive similarity and item scoring functions.** Through bounded, recency-ordered indexing and early stopping, neighbor retrieval scales with the length of the active session rather than the size of the historical session corpus, given fixed retrieval limits.
 
 ## What Serenade offers
 
@@ -217,7 +217,7 @@ If you use Serenade in academic work, please cite the original research:
 [Read the paper](https://doi.org/10.1145/3514221.3517901)
 
 ```bibtex
-@inproceedings{Kersbergen2022SerenadeScale,
+@inproceedings{Kersbergen2022SerenadeScaleVMIS,
   author    = {Kersbergen, Barrie and Sprangers, Olivier and Schelter, Sebastian},
   title     = {Serenade - Low-Latency Session-Based Recommendation in e-Commerce at Scale},
   booktitle = {Proceedings of the 2022 International Conference on Management of Data},

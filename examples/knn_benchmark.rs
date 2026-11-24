@@ -300,8 +300,6 @@ fn overview(rows: &[Row]) -> String {
                 "Performance (measured-iteration medians)",
                 vec![
                     ("Build ms", "index_build_ms_median", 1., 1),
-                    ("Save ms", "snapshot_save_ms_median", 1., 1),
-                    ("Load ms", "snapshot_load_ms_median", 1., 1),
                     ("p50 ms", "prediction_latency_p50_ms_median", 1., 4),
                     ("p90 ms", "prediction_latency_p90_ms_median", 1., 4),
                     ("p95 ms", "prediction_latency_p95_ms_median", 1., 4),
@@ -312,7 +310,6 @@ fn overview(rows: &[Row]) -> String {
                         1048576.,
                         1,
                     ),
-                    ("Disk MiB", "snapshot_size_bytes_median", 1048576., 1),
                 ],
             ),
         ] {
