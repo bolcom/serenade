@@ -32,7 +32,7 @@ In Windows PowerShell:
 .\serving.exe hpo-results/stan.toml
 ```
 
-The default HPO configuration runs 50 trials for each of the five algorithms. Edit dataset paths, trial budget, objective, and algorithm ranges in `configs/hpo.toml`; see [Configuration](CONFIG.md). Training and validation select the best settings; test data is used only for evaluation.
+The default HPO configuration runs 50 trials for each of the seven algorithms. Edit dataset paths, trial budget, objective, and algorithm ranges in `configs/hpo.toml`; see [Configuration](CONFIG.md). Training and validation select the best settings; test data is used only for evaluation.
 
 HPO writes one complete `ALGORITHM.toml` per enabled algorithm to `hpo-results`, plus trial and comparison reports. The same TOML works for evaluation and serving. Choose the algorithm using validation results before evaluating its held-out test performance.
 

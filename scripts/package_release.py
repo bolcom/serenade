@@ -15,6 +15,7 @@ import urllib.request
 import zipfile
 
 BINS = ("serving", "evaluator", "tpe_hyperparameter_optm")
+LICENSES = ("LICENSE.md", "docs/third-party/wsknn-LICENSE.md")
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -23,7 +24,7 @@ def smoke(root, iterations=3):
     def run(name, *args):
         subprocess.run([str(root / (name + suffix)), *args], cwd=root,
                        check=True, timeout=120)
-    algorithms = ["vmis", "sknn", "vsknn", "stan", "vsknn_stan"]
+    algorithms = ["vmis", "sknn", "ssknn", "wsknn", "vsknn", "stan", "vsknn_stan"]
     config = "configs/hpo.toml"
     run("evaluator", config, "vmis", "evaluation.json")
     result = json.loads((root / "evaluation.json").read_text())["results"][0]
@@ -100,10 +101,10 @@ def smoke(root, iterations=3):
     disabled = disabled.replace("[hyperparam.algorithms.stan]\nenabled = true", "[hyperparam.algorithms.stan]\nenabled = false")
     (root / "disabled.toml").write_text(disabled.replace('output_dir = "hpo"', 'output_dir = "subset"'))
     run("tpe_hyperparameter_optm", "disabled.toml")
-    assert sorted(p.stem for p in (root / "subset").glob("*.toml")) == ["vmis", "vsknn", "vsknn_stan"]
+    assert sorted(p.stem for p in (root / "subset").glob("*.toml")) == sorted(a for a in algorithms if a not in ["sknn", "stan"])
     comparison = json.loads((root / "subset/comparison.json").read_text())
-    assert [r["algorithm"] for r in comparison] == ["vmis", "vsknn", "vsknn_stan"]
-    for algorithm in ["vmis", "vsknn", "vsknn_stan"]:
+    assert [r["algorithm"] for r in comparison] == [a for a in algorithms if a not in ["sknn", "stan"]]
+    for algorithm in [a for a in algorithms if a not in ["sknn", "stan"]]:
         assert json.loads((root / f"subset/{algorithm}.json").read_text()) == json.loads((root / f"hpo/{algorithm}.json").read_text())
     for name, content, override in [
         ("none", disabled.replace("enabled = true", "enabled = false"), []),
@@ -119,7 +120,7 @@ def smoke(root, iterations=3):
     heldout = json.loads((root / "holdout/vmis.json").read_text())
     assert original["trials"] == heldout["trials"]
     assert original["best_hyperparameters"] == heldout["best_hyperparameters"]
-    print("Extracted package: five algorithms, exact exports, evaluation, validation scores, serving, seeds, disabled algorithms and legacy config passed")
+    print("Extracted package: seven algorithms, exact exports, evaluation, validation scores, serving, seeds, disabled algorithms and legacy config passed")
 
 
 def main():
@@ -153,7 +154,10 @@ def main():
                 (ROOT / "docs" / guide).read_text(encoding="utf-8-sig").replace("(BINARIES.md)", "(README.md)"),
                 encoding="utf-8",
             )
-        shutil.copy2(ROOT / "LICENSE.md", staging / "LICENSE.md")
+        for license_path in LICENSES:
+            destination = staging / license_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / license_path, destination)
         expected = {p.relative_to(staging).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                     for p in staging.rglob("*") if p.is_file()}
         archive = dist / (name + (".zip" if suffix else ".tar.gz"))

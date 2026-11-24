@@ -973,10 +973,66 @@ mod sequence_tests {
             &KnnConfig::for_algorithm(Algorithm::Stan)
         )
         .is_err());
+        assert!(VMISIndex::load_for_model(
+            snapshot.to_str().unwrap(),
+            10,
+            1.0,
+            &KnnConfig::for_algorithm(Algorithm::Wsknn)
+        )
+        .is_err());
         fs::write(&snapshot, b"SERENADE-VMIS-001").unwrap();
         assert!(VMISIndex::load_for_model(snapshot.to_str().unwrap(), 10, 1.0, &legacy).is_err());
         fs::remove_file(csv).unwrap();
         fs::remove_file(snapshot).unwrap();
+    }
+
+    #[test]
+    fn bounded_recent_retrieval_matches_exhaustive_recency_cutoff() {
+        let path = std::env::temp_dir().join(format!("serenade-recent-{}.tsv", std::process::id()));
+        let mut events = String::from("SessionId\tItemId\tTime\n");
+        for sid in 0..120 {
+            for item in [sid % 7, (sid * 3) % 11, sid % 7] {
+                events.push_str(&format!("{sid}\t{item}\t{}\n", 1 + sid / 4));
+            }
+        }
+        fs::write(&path, events).unwrap();
+        let index = VMISIndex::new_from_csv(path.to_str().unwrap(), 120, 1.0);
+        fs::remove_file(path).unwrap();
+        for current in [
+            vec![],
+            vec![999],
+            vec![1],
+            vec![1, 2, 1],
+            vec![999, 3, 4, 2],
+        ] {
+            let mut exhaustive: Vec<_> = index
+                .session_to_items_sorted
+                .iter()
+                .enumerate()
+                .filter(|(_, items)| items.iter().any(|i| current.contains(i)))
+                .map(|(id, _)| id as u32)
+                .collect();
+            exhaustive
+                .sort_by_key(|&id| std::cmp::Reverse(index.session_to_max_time_stamp[id as usize]));
+            for m in [0, 1, 2, 5, 20, 120, 200] {
+                let actual = index.candidate_sessions(&current, m);
+                assert_eq!(actual, index.candidate_sessions(&current, m));
+                assert_eq!(actual.len(), m.min(exhaustive.len()));
+                // Equal timestamps deliberately retain legacy VMIS membership.
+                let mut times: Vec<_> = actual
+                    .iter()
+                    .map(|&id| index.session_to_max_time_stamp[id as usize])
+                    .collect();
+                times.sort_unstable_by(|a, b| b.cmp(a));
+                let expected: Vec<_> = exhaustive
+                    .iter()
+                    .take(m)
+                    .map(|&id| index.session_to_max_time_stamp[id as usize])
+                    .collect();
+                assert_eq!(times, expected);
+                assert!(actual.iter().all(|id| exhaustive.contains(id)));
+            }
+        }
     }
 
     #[test]

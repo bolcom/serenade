@@ -43,7 +43,11 @@ fn reused_index_matches_fresh_indexes_and_keeps_holdout_separate() {
             shared.prepare_for_model(m, 0.75, &knn).unwrap();
             let fresh =
                 VMISIndex::load_for_model(training.to_str().unwrap(), m, 0.75, &knn).unwrap();
-            for current in [&[1][..], &[1, 3][..], &[1, 2, 1][..]] {
+            let snapshot = directory.join("index.vmis");
+            shared.save(snapshot.to_str().unwrap()).unwrap();
+            let restored =
+                VMISIndex::load_for_model(snapshot.to_str().unwrap(), m, 0.75, &knn).unwrap();
+            for current in [&[][..], &[999][..], &[1][..], &[1, 3][..], &[1, 2, 1][..]] {
                 let predictions = |index: &VMISIndex| {
                     predict_with_model(index, current, 3, m, 20, false, &knn, 200.0)
                         .into_sorted_vec()
@@ -58,6 +62,7 @@ fn reused_index_matches_fresh_indexes_and_keeps_holdout_separate() {
                     algorithm,
                     m
                 );
+                assert_eq!(predictions(&shared), predictions(&restored));
                 assert!(!predictions(&shared).iter().any(|(id, _)| *id == 999));
             }
             let model = ModelConfig {

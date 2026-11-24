@@ -12,7 +12,7 @@ Inputs: raw interaction files with a `SessionId ItemId Time` header, separated b
 
 ## Configuration
 
-Select `all`, one algorithm, or a comma-separated list: `vmis`, `sknn`, `vsknn`, `stan`, `vsknn_stan`.
+Select `all`, one algorithm, or a comma-separated list: `vmis`, `sknn`, `ssknn`, `wsknn`, `vsknn`, `stan`, `vsknn_stan`.
 
 | Option | Default | Purpose |
 |---|---|---|
@@ -140,4 +140,4 @@ cargo test --example knn_benchmark --offline
 cargo fmt --all -- --check
 ```
 
-Tests cover aggregation, missing measurements, latency percentiles, CSV consistency and all five algorithms, with and without snapshots.
+Tests cover aggregation, missing measurements, latency percentiles, CSV consistency and all seven algorithms, with and without snapshots.

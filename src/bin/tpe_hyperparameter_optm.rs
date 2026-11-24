@@ -71,7 +71,7 @@ fn axes(config: &AppConfig, algorithm: Algorithm) -> anyhow::Result<Search> {
         Algorithm::Vmis | Algorithm::Vsknn => {
             specs.push(("idf_weighting", false, false, &h.idf_weighting_range))
         }
-        Algorithm::Sknn => specs.push((
+        Algorithm::Sknn | Algorithm::Ssknn => specs.push((
             "pop_boost",
             false,
             false,
@@ -187,7 +187,7 @@ fn categorical_specs(algorithm: Algorithm) -> Vec<(&'static str, Vec<serde_json:
         specs.push(("remind", vec![json!(false), json!(true)]));
     }
     match algorithm {
-        Algorithm::Sknn => specs.push((
+        Algorithm::Sknn | Algorithm::Ssknn => specs.push((
             "similarity",
             strings(&["jaccard", "cosine", "tanimoto", "binary"]),
         )),
@@ -203,7 +203,20 @@ fn categorical_specs(algorithm: Algorithm) -> Vec<(&'static str, Vec<serde_json:
                 specs.push((name, vec![json!(false), json!(true)]));
             }
         }
+        Algorithm::Wsknn => {
+            specs.push(("weighting", strings(&["linear", "log", "quadratic"])));
+            specs.push((
+                "weighting_score",
+                strings(&["linear", "div", "log", "quadratic"]),
+            ));
+        }
         _ => {}
+    }
+    if algorithm == Algorithm::Ssknn {
+        specs.push((
+            "weighting",
+            strings(&["same", "linear", "div", "log", "quadratic"]),
+        ));
     }
     specs
 }
@@ -516,7 +529,10 @@ normalize_choices = [false, true]
         }
         for algorithm in Algorithm::ALL {
             let specs = categorical_specs(algorithm);
-            if !matches!(algorithm, Algorithm::Sknn | Algorithm::Vsknn) {
+            if !matches!(
+                algorithm,
+                Algorithm::Sknn | Algorithm::Ssknn | Algorithm::Vsknn
+            ) {
                 assert!(!specs.iter().any(|(name, _)| *name == "similarity"));
             }
         }

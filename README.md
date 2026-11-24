@@ -24,7 +24,7 @@ Serenade — Production recommendation system. A scalable, stateful recommendati
 cargo run --release --example knn_benchmark -- target/scaled-local-100x-10x-items/train.tsv target/scaled-local-100x-10x-items/valid.tsv all --iterations 3 --warmup 1 --raw target/knn-benchmark/iterations.csv --snapshot-dir target/knn-benchmark/snapshots
 ```
 
-Use actual training and validation paths. All five algorithms write one consolidated
+Use actual training and validation paths. All seven algorithms write one consolidated
 CSV to `target/knn-benchmark/results.csv`, with a companion metadata JSON file.
 Timings report medians and ranges across independent measured iterations; warm-ups
 are excluded. Progress goes to stderr (`--quiet` suppresses it).
@@ -50,22 +50,26 @@ These results demonstrate how carefully designed algorithms and data structures 
 
 ## Extending Serenade with additional scalable kNN algorithms
 
-Building on the original VMIS-kNN research, **we extend Serenade with scalable adaptations of four established session-based kNN algorithms**, preserving their distinctive scoring methods while leveraging VMIS-kNN's efficient neighbor retrieval architecture.
+Building on the original VMIS-kNN research, **we extend Serenade with scalable adaptations of six established session-based kNN algorithms**, preserving their distinctive scoring methods while leveraging VMIS-kNN's efficient neighbor retrieval architecture.
 
 | Algorithm | Paper | Publication |
 |---|---|---|
 | **SKNN** | [When Recurrent Neural Networks meet the Neighborhood for Session-Based Recommendation](https://doi.org/10.1145/3109859.3109872) | RecSys '17 |
+| **S-SKNN (SeqContextKNN)** | [Evaluation of session-based recommendation algorithms](https://doi.org/10.1007/s11257-018-9209-6) | UMUAI '18 |
+| **WSKNN** | [WSKNN: Weighted session-based KNN algorithm for next-item recommendation](https://doi.org/10.21105/joss.05639) | JOSS '23 |
 | **VS-KNN** | [Evaluation of session-based recommendation algorithms](https://doi.org/10.1007/s11257-018-9209-6) | UMUAI '18 |
 | **STAN** | [Sequence and Time Aware Neighborhood for Session-based Recommendations: STAN](https://doi.org/10.1145/3331184.3331322) | SIGIR '19 |
 | **VSKNN-STAN (VSTAN)** | [Empirical analysis of session-based recommendation algorithms: A comparison of neural and non-neural approaches](https://doi.org/10.1007/s11257-020-09277-1) | UMUAI '21 |
 
-**Our contribution is to make these established algorithms scalable by adapting their neighbor retrieval to VMIS-kNN's bounded, recency-ordered index and early-stopping strategy**, while preserving each algorithm's distinctive scoring method. With fixed retrieval limits, query-time neighbor retrieval scales with the length of the active session rather than the size of the historical session corpus, enabling these algorithms to benefit from VMIS-kNN's scalability.
+As described in [Illoominate (Kersbergen et al., 2026)](https://doi.org/10.1145/3828670), session-based kNN-based recommendation can be decomposed into two functions: neighbor retrieval ($f_{ret}$) and item scoring ($f_{pred}$).
+
+**Our contribution is to introduce scalable adaptations of established session-based kNN algorithms by leveraging the VMISIndex for neighbor retrieval, while preserving their distinctive similarity and item scoring functions.** Through bounded, recency-ordered indexing and early stopping, neighbor retrieval scales with the length of the active session rather than the size of the historical session corpus, given fixed retrieval limits.
 
 ## What Serenade offers
 
 Serenade provides a complete workflow for developing, evaluating, and serving session-based nearest-neighbor recommendation models:
 
-- **Scalable recommendation algorithms:** Five kNN approaches using the shared VMIS indexing and candidate retrieval approach.
+- **Scalable recommendation algorithms:** Seven kNN approaches using the shared VMIS indexing and candidate retrieval approach.
 - **Automated hyperparameter optimization:** [Tree-structured Parzen Estimator (TPE) optimization](https://proceedings.mlr.press/v28/bergstra13.pdf) across selected algorithms, with configurable objectives such as `mrr@20`, `ndcg@8`, and `hitrate@10`.
 - **Offline evaluation:** Evaluate optimized models on held-out data using ranking and recommendation quality metrics.
 - **Low-latency serving:** An HTTP recommendation service with session management backed by RocksDB.
@@ -105,7 +109,7 @@ For example:
 objective = "ndcg@8"
 ```
 
-All five algorithms are enabled by default. Individual algorithms can be disabled in their configuration sections.
+All seven algorithms are enabled by default. Individual algorithms can be disabled in their configuration sections.
 
 Run TPE optimization:
 
@@ -119,6 +123,8 @@ Serenade optimizes the enabled algorithms and generates a configuration containi
 hpo-results/
     vmis.toml
     sknn.toml
+    ssknn.toml
+    wsknn.toml
     vsknn.toml
     stan.toml
     vsknn_stan.toml
@@ -211,7 +217,7 @@ If you use Serenade in academic work, please cite the original research:
 [Read the paper](https://doi.org/10.1145/3514221.3517901)
 
 ```bibtex
-@inproceedings{Kersbergen2022SerenadeScale,
+@inproceedings{Kersbergen2022SerenadeScaleVMIS,
   author    = {Kersbergen, Barrie and Sprangers, Olivier and Schelter, Sebastian},
   title     = {Serenade - Low-Latency Session-Based Recommendation in e-Commerce at Scale},
   booktitle = {Proceedings of the 2022 International Conference on Management of Data},
