@@ -656,7 +656,7 @@ pub fn load_model(path: &std::path::Path) -> anyhow::Result<ModelConfig> {
     let mut conf = Config::default();
     conf.add_source(
         ConfigText::new(File::open(&path)?, &path.display().to_string())
-            .map_err(|e| anyhow::anyhow!("parse model {}: {}", path.display(), e))?,
+            .map_err(|e| anyhow::anyhow!("parse model {}: {}", crate::paths::display(&path), e))?,
     );
     let model = ModelConfig::parse(&conf, ConfPath::from(&["model"]))?;
     anyhow::ensure!(
@@ -698,7 +698,11 @@ pub fn load_serving(
     let mut conf = Config::default();
     conf.add_source(
         ConfigText::new(File::open(path)?, &path.display().to_string()).map_err(|e| {
-            anyhow::anyhow!("parse serving configuration {}: {}", path.display(), e)
+            anyhow::anyhow!(
+                "parse serving configuration {}: {}",
+                crate::paths::display(path),
+                e
+            )
         })?,
     );
     let snapshot = knn_value(&conf, &ConfPath::from(&["data"]), "index_path")?;
@@ -745,7 +749,11 @@ impl HpoConfig {
         let mut conf = Config::default();
         conf.add_source(
             ConfigText::new(File::open(&path)?, &path.display().to_string()).map_err(|e| {
-                anyhow::anyhow!("parse HPO configuration {}: {}", path.display(), e)
+                anyhow::anyhow!(
+                    "parse HPO configuration {}: {}",
+                    crate::paths::display(&path),
+                    e
+                )
             })?,
         );
         let mut hyperparam = HyperparamConfig::parse(&conf, ConfPath::from(&["hyperparam"]))?;

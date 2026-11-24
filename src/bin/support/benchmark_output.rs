@@ -127,3 +127,108 @@ mod tests {
         assert!(write_row(&mut writer, &mut columns, &wrong).is_err());
     }
 }
+
+/// Render the exact stored values, with widths calculated from headers and cells.
+pub fn table(headers: &[&str], rows: &[Vec<String>]) -> String {
+    let widths: Vec<_> = headers
+        .iter()
+        .enumerate()
+        .map(|(i, h)| {
+            rows.iter()
+                .map(|r| r[i].chars().count())
+                .chain([h.chars().count()])
+                .max()
+                .unwrap()
+        })
+        .collect();
+    let line = |cells: &[String]| {
+        cells
+            .iter()
+            .zip(&widths)
+            .map(|(cell, width)| format!("{cell:width$}"))
+            .collect::<Vec<_>>()
+            .join("  ")
+            .trim_end()
+            .to_owned()
+    };
+    let mut lines = vec![line(
+        &headers.iter().map(|h| h.to_string()).collect::<Vec<_>>(),
+    )];
+    lines.push(
+        widths
+            .iter()
+            .map(|w| "-".repeat(*w))
+            .collect::<Vec<_>>()
+            .join("  "),
+    );
+    lines.extend(rows.iter().map(|r| line(r)));
+    lines.join("\n")
+}
+
+pub fn print_result(row: &Row, benchmark: bool) {
+    println!(
+        "\nResult {}: {} ({} predictions)",
+        row["configuration_id"], row["algorithm"], row["predictions"]
+    );
+    println!("Quality: mean over prediction cases; Coverage is distinct recommended items / distinct training items.");
+    let quality: Vec<_> = row
+        .iter()
+        .filter(|(name, _)| name.contains('@'))
+        .map(|(name, value)| vec![name.clone(), value.clone()])
+        .collect();
+    println!(
+        "{}",
+        table(&["Quality metric", "Value (unitless)"], &quality)
+    );
+    if benchmark {
+        println!(
+            "\nPerformance: median across {} measured iterations; {} warmup iterations excluded.",
+            row["measured_iterations"], row["warmup_iterations"]
+        );
+        println!("Latency percentiles are computed per iteration before taking medians; throughput uses {} workers.", row["evaluation_workers"]);
+        let performance: Vec<_> = row
+            .iter()
+            .filter(|(name, _)| name.ends_with("_median"))
+            .map(|(name, value)| {
+                vec![
+                    name.clone(),
+                    if name.contains("_ms_") {
+                        "ms"
+                    } else if name.contains("_bytes_") {
+                        "bytes"
+                    } else {
+                        "predictions/s"
+                    }
+                    .into(),
+                    if value.is_empty() {
+                        "n/a".into()
+                    } else {
+                        value.clone()
+                    },
+                ]
+            })
+            .collect();
+        println!(
+            "{}",
+            table(&["Performance metric", "Unit", "Value"], &performance)
+        );
+    }
+}
+
+#[cfg(test)]
+mod console_tests {
+    #[test]
+    fn columns_align_for_long_headers_and_values() {
+        let rendered = super::table(
+            &["Metric", "Value"],
+            &[
+                vec!["short".into(), "0.123456789".into()],
+                vec!["long_metric_name".into(), "n/a".into()],
+            ],
+        );
+        let lines: Vec<_> = rendered.lines().collect();
+        let column = lines[0].find("Value").unwrap();
+        assert_eq!(lines[2].find("0.123456789"), Some(column));
+        assert_eq!(lines[3].find("n/a"), Some(column));
+    }
+}

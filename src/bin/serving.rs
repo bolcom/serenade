@@ -90,9 +90,9 @@ async fn main() -> std::io::Result<()> {
         );
         eprintln!(
             "Model: {}\nServing configuration: {}\nTraining/index: {}",
-            model_path.display(),
-            config_path.display(),
-            config.data.training_data_path
+            serenade::paths::display(&model_path),
+            serenade::paths::display(&config_path),
+            serenade::paths::display(&config.data.training_data_path)
         );
         Ok(config)
     };
@@ -129,7 +129,7 @@ async fn main() -> std::io::Result<()> {
             .map_err(|error| std::io::Error::other(error.to_string()))?;
         println!(
             "Saved {} (estimated owned index allocation: {} bytes)",
-            output,
+            serenade::paths::display(&output),
             index.estimated_heap_bytes()
         );
         return Ok(());
@@ -137,7 +137,6 @@ async fn main() -> std::io::Result<()> {
     let vmis_index = Arc::new(index);
     let knn = config.model.knn.clone();
 
-    println!("start db");
     let session_ttl = Duration::from_secs(30 * 60);
     let db = Arc::new(
         RocksDBSessionStore::try_new("./sessions.db", session_ttl)
@@ -184,13 +183,12 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    println!("start metrics");
     let prometheus = PrometheusMetricsBuilder::new("api")
         .endpoint("/internal/prometheus")
         .build()
         .map_err(std::io::Error::other)?;
 
-    println!("Done. start httpd at http://{}", &bind_address);
+    println!("Serving at http://{}", &bind_address);
     HttpServer::new(move || {
         let handles_and_config = SharedHandlesAndConfig {
             knn: knn.clone(),

@@ -50,10 +50,14 @@ impl Fixture {
             "{}",
             String::from_utf8_lossy(&result.stderr)
         );
-        assert!(result.stdout.is_empty(), "unexpected console I/O");
+        let console = String::from_utf8(result.stdout).unwrap();
+        assert!(!console.contains(r"\\?\"));
+        for name in METRICS {
+            assert!(console.contains(name), "missing console metric {name}");
+        }
         let mut reader = csv::Reader::from_path(output).unwrap();
         let headers = reader.headers().unwrap().clone();
-        reader
+        let rows: Vec<std::collections::BTreeMap<String, String>> = reader
             .records()
             .map(|r| {
                 headers
@@ -62,7 +66,27 @@ impl Fixture {
                     .zip(r.unwrap().iter().map(str::to_string))
                     .collect()
             })
-            .collect()
+            .collect();
+        for row in &rows {
+            for (name, value) in row {
+                if name.contains('@')
+                    || (flags.contains(&"--benchmark") && name.ends_with("_median"))
+                {
+                    let expected = if value.is_empty() { "n/a" } else { value };
+                    assert!(
+                        console.lines().any(|line| line.split_whitespace().next()
+                            == Some(name.as_str())
+                            && line.split_whitespace().nth(if name.ends_with("_median") {
+                                2
+                            } else {
+                                1
+                            }) == Some(expected)),
+                        "missing {name} = {expected}"
+                    );
+                }
+            }
+        }
+        rows
     }
 }
 impl Drop for Fixture {

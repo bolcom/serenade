@@ -378,8 +378,10 @@ fn main() -> anyhow::Result<()> {
     serenade::paths::corpus(training)?;
     serenade::paths::input(&config.hyperparam.validation_data_path)?;
     eprintln!(
-        "Training: {training}\nValidation: {}\nOutput: {}",
-        config.hyperparam.validation_data_path, config.hyperparam.output_dir
+        "Training: {}\nValidation: {}\nOutput: {}",
+        serenade::paths::display(training),
+        serenade::paths::display(&config.hyperparam.validation_data_path),
+        serenade::paths::display(args.get(3).unwrap_or(&config.hyperparam.output_dir))
     );
     let mut index = VMISIndex::load_corpus(training, capacity).map_err(anyhow::Error::msg)?;
     let data = EvaluationData::load(&config.hyperparam.validation_data_path)?;
@@ -391,10 +393,6 @@ fn main() -> anyhow::Result<()> {
     std::fs::create_dir_all(output)?;
     let objective = config.hyperparam.objective;
     println!("Objective: {}", objective);
-    println!(
-        "algorithm\tbest validation {}\thyperparameters\tmodel configuration",
-        objective
-    );
     let mut comparison = Vec::new();
     for (base, search) in models.into_iter().zip(searches) {
         let Search {
@@ -510,21 +508,21 @@ fn main() -> anyhow::Result<()> {
                 serde_json::to_string_pretty(&result)?,
             )?;
         }
-        println!(
-            "{}\t{:.6}\t{}\t{}",
-            algorithm,
-            best_score,
-            serde_json::to_string(&best_parameters)?,
-            application_path.display()
-        );
         comparison.push(result);
     }
-    println!("\nAlgorithm\tBest {}", objective);
+    println!(
+        "\n{:<14}  {:<18}  Model configuration  Hyperparameters",
+        "Algorithm",
+        format!("Best {}", objective)
+    );
+    println!("{}", "-".repeat(62));
     for result in &comparison {
         println!(
-            "{}\t{:.6}",
+            "{:<14}  {:<18.6}  best-{}.toml  {}",
             result["algorithm"].as_str().unwrap(),
-            result["best_validation_score"].as_f64().unwrap()
+            result["best_validation_score"].as_f64().unwrap(),
+            result["algorithm"].as_str().unwrap(),
+            serde_json::to_string(&result["best_hyperparameters"])?
         );
     }
     if !modern || config.hyperparam.save_records {

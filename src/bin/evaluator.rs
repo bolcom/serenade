@@ -115,7 +115,6 @@ fn run(args: Vec<String>) -> Result<()> {
             PathBuf::from("evaluation-results.csv")
         }
     }))?;
-    eprintln!("Output: {}", output.display());
     // Validate every configuration before loading any corpus or opening output.
     let mut jobs = Vec::new();
     for path in &paths {
@@ -132,12 +131,6 @@ fn run(args: Vec<String>) -> Result<()> {
                     .clone()
                     .unwrap_or_else(|| base.join("test.txt")),
             )?;
-            eprintln!(
-                "Training: {}\nTest: {}\nModel: {}",
-                train.display(),
-                test.display(),
-                path.display()
-            );
             jobs.push((
                 path.clone(),
                 train.display().to_string(),
@@ -217,16 +210,19 @@ fn run(args: Vec<String>) -> Result<()> {
         jobs.into_iter().enumerate()
     {
         eprintln!(
-            "Dataset {test}, algorithm {}, configuration {}",
+            "Evaluating {}: {} ({})",
+            job_id + 1,
             model.knn.algorithm.name(),
-            path.display()
+            serenade::paths::display(&path)
         );
         let key = (train.clone(), capacity);
         if cached_data.as_ref() != Some(&test) {
+            eprintln!("Test: {}", serenade::paths::display(&test));
             data = Some(EvaluationData::load(&test)?);
             cached_data = Some(test.clone());
         }
         if cached_corpus.as_ref() != Some(&key) {
+            eprintln!("Training: {}", serenade::paths::display(&train));
             drop(corpus.take()); // Drop the previous corpus before loading another.
             if !benchmark {
                 corpus =
@@ -291,9 +287,7 @@ fn run(args: Vec<String>) -> Result<()> {
         for iteration in 0..count {
             if benchmark {
                 eprintln!(
-                    "  {test} / {} / {}: {} iteration {}",
-                    model.knn.algorithm.name(),
-                    path.display(),
+                    "  {} iteration {}",
                     if iteration < warmup {
                         "warm-up"
                     } else {
@@ -412,8 +406,9 @@ fn run(args: Vec<String>) -> Result<()> {
             row.insert(format!("{name}_median"), number(value));
         }
         write_row(&mut writer, &mut columns, &row)?;
+        output::print_result(&row, benchmark);
     }
-    eprintln!("Results: {}", output.display());
+    eprintln!("Results: {}", serenade::paths::display(&output));
     Ok(())
 }
 
