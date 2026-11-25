@@ -1,13 +1,13 @@
-name: Binary release
+name: Serenade release
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish a GitHub Release after all builds pass
+        description: Publish or resume GitHub and crates.io release after validation
         type: boolean
         default: false
       release_tag:
-        description: Existing version tag to publish (for example v0.3.3)
+        description: Existing Cargo version tag to publish or resume (for example v0.9.1)
         type: string
         required: false
   push:
@@ -15,9 +15,6 @@ on:
     tags: ['v*.*.*']
 permissions:
   contents: read
-concurrency:
-  group: binary-release-${{ inputs.release_tag || github.ref_name }}
-  cancel-in-progress: false
 jobs:
   prepare:
     runs-on: ubuntu-22.04
@@ -34,7 +31,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Test release version detection
-        run: python -m unittest discover -s scripts -p test_release_version.py
+        run: python -m unittest discover -s scripts
       - name: Resolve release tag and immutable build commit
         id: resolve
         env:
@@ -63,14 +60,14 @@ jobs:
             publish=true
             tag="$REQUESTED_TAG"
           elif [[ -n "$REQUESTED_TAG" ]]; then
-            echo 'Select Publish a GitHub Release to use a release tag.' >&2
+            echo 'Enable publication to use a release tag.' >&2
             exit 1
           fi
           ref="$GITHUB_SHA"
           version="validation-$GITHUB_SHA"
           if [[ "$publish" == true ]]; then
             if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo 'Publishing requires an existing tag such as v0.3.3.' >&2
+              echo 'Publishing requires a Cargo version tag such as v0.9.1.' >&2
               exit 1
             fi
             if [[ "$automatic" != true ]]; then
@@ -84,6 +81,11 @@ jobs:
               fi
             fi
             version="$tag"
+            package_version=$(git show "$ref:Cargo.toml" | python -c 'import sys,tomllib; print(tomllib.loads(sys.stdin.read())["package"]["version"])')
+            if [[ "v$package_version" != "$version" ]]; then
+              echo 'Release tag must match Cargo.toml package.version.' >&2
+              exit 1
+            fi
           fi
           echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
@@ -157,50 +159,65 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 14
+  crate:
+    if: needs.prepare.outputs.build == 'true'
+    needs: prepare
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - name: Native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang libclang-dev cmake
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal --no-self-update
+      - name: Test library with minimal dependencies
+        run: cargo +stable test --locked --no-default-features
+      - name: Validate minimal dependency graph
+        shell: bash
+        run: |
+          cargo +stable tree --locked --no-default-features --prefix none > dependencies
+          if grep -E '^(actix-web|rocksdb|librocksdb-sys|actix-web-prom|prometheus|tpe) v' dependencies; then
+            echo 'Application dependency leaked into library build.' >&2
+            exit 1
+          fi
+      - name: Build library documentation
+        run: cargo +stable doc --locked --no-default-features --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+      - name: Validate crates.io package (no publication)
+        run: cargo +stable publish --locked --dry-run
   publish:
     if: needs.prepare.outputs.publish == 'true'
-    needs: [prepare, build]
+    needs: [prepare, build, crate]
     runs-on: ubuntu-22.04
+    concurrency:
+      group: serenade-publication-${{ needs.prepare.outputs.version }}
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang libclang-dev cmake
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal --no-self-update
       - uses: actions/download-artifact@v6
         with:
           pattern: serenade-*
           merge-multiple: true
           path: dist
-      - name: Verify complete release and publish draft atomically
+      - name: Publish or resume matching GitHub and crates.io distributions
+        run: python scripts/publish_release.py
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ needs.prepare.outputs.version }}
           RELEASE_SHA: ${{ needs.prepare.outputs.ref }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          for platform in windows-x86_64 linux-x86_64 macos-x86_64 macos-aarch64; do
-            extension=tar.gz
-            if [[ "$platform" == windows-* ]]; then extension=zip; fi
-            test -s "dist/serenade-$TAG-$platform.$extension"
-            test -s "dist/serenade-$TAG-$platform.$extension.sha256"
-          done
-          (cd dist && sha256sum -c *.sha256)
-          # Refuse to replace any existing release, including a failed draft.
-          # The create API also rejects duplicates if another publisher races us.
-          gh api "repos/$GH_REPO/releases" --paginate --jq '.[].tag_name' > existing-tags
-          if grep -Fxq "$TAG" existing-tags; then
-            echo 'Release already exists; inspect it and explicitly remove an incomplete draft before retrying.' >&2
-            exit 1
-          fi
-          # Never reuse a tag that identifies an untested commit.
-          if tagged_sha=$(gh api "repos/$GH_REPO/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null); then
-            if [[ "$tagged_sha" != "$RELEASE_SHA" ]]; then
-              echo "Tag $TAG points to a different commit." >&2
-              exit 1
-            fi
-          else
-            gh api "repos/$GH_REPO/git/refs" --method POST -f "ref=refs/tags/$TAG" -f "sha=$RELEASE_SHA"
-          fi
-          gh release create "$TAG" --verify-tag --target "$RELEASE_SHA" --draft --title "Serenade $TAG" --generate-notes
-          gh release upload "$TAG" dist/*
-          gh release edit "$TAG" --draft=false
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

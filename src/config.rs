@@ -43,13 +43,21 @@ pub struct DataConfig {
     pub index_capacity: usize,
 }
 
+/// Portable model settings shared by HPO, evaluation, serving and the library.
+/// Start with [`Self::for_algorithm`] and override individual fields.
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct ModelConfig {
+    /// Algorithm-specific similarities, weights, decay and scoring options.
     pub knn: crate::vmisknn::algorithms::KnnConfig,
+    /// Maximum retrieved candidate sessions; must fit the index capacity.
     pub m_most_recent_sessions: usize,
+    /// Maximum scored neighbors used for item recommendations.
     pub neighborhood_size_k: usize,
+    /// Default application cutoff; the library's `predict` cutoff overrides it.
     pub num_items_to_recommend: usize,
+    /// Keep this many most recent input items, including repetitions.
     pub max_items_in_session: usize,
+    /// Legacy VMIS IDF multiplier; reference algorithm IDF uses `knn` settings.
     pub idf_weighting: f64,
 }
 
@@ -245,6 +253,19 @@ impl DataConfig {
 }
 
 impl ModelConfig {
+    /// Defaults for an algorithm, matching the application configuration loader.
+    /// Adjust the public fields before constructing a [`crate::Recommender`].
+    pub fn for_algorithm(algorithm: crate::vmisknn::algorithms::Algorithm) -> Self {
+        Self {
+            knn: crate::vmisknn::algorithms::KnnConfig::for_algorithm(algorithm),
+            m_most_recent_sessions: DEFAULT_MOST_RECENT_SESSIONS_M,
+            neighborhood_size_k: DEFAULT_NEIGHBORHOOD_SIZE_K,
+            num_items_to_recommend: DEFAULT_NUM_ITEMS_TO_RECOMMEND,
+            max_items_in_session: DEFAULT_MAX_ITEMS_IN_SESSION,
+            idf_weighting: DEFAULT_IDF_WEIGHTING,
+        }
+    }
+
     fn parse(conf: &Config, path: ConfPath) -> anyhow::Result<ModelConfig> {
         Ok(ModelConfig {
             knn: parse_knn_config(conf, &path)?,
@@ -269,6 +290,12 @@ impl ModelConfig {
                 .trim()
                 .value_or_default("idf_weighting", DEFAULT_IDF_WEIGHTING)?,
         })
+    }
+}
+
+impl Default for ModelConfig {
+    fn default() -> Self {
+        Self::for_algorithm(crate::vmisknn::algorithms::Algorithm::Vmis)
     }
 }
 

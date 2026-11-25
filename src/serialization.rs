@@ -2,12 +2,14 @@
 use serde::{de::DeserializeOwned, Serialize};
 use std::io::{Read, Write};
 
+#[cfg(any(feature = "serving", test))]
 pub(crate) fn serialize<T: Serialize + ?Sized>(
     value: &T,
 ) -> Result<Vec<u8>, bincode::error::EncodeError> {
     bincode::serde::encode_to_vec(value, bincode::config::legacy())
 }
 
+#[cfg(any(feature = "serving", test))]
 pub(crate) fn deserialize<T: DeserializeOwned>(
     bytes: &[u8],
 ) -> Result<T, bincode::error::DecodeError> {

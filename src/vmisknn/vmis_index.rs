@@ -22,8 +22,24 @@ pub struct ProductAttributes {
     pub(crate) is_for_sale: bool,
 }
 
+/// Immutable session corpus and bounded, recency-ordered item postings.
+///
+/// Use [`Self::load`] or [`Self::builder`] for algorithm-independent construction.
+/// Share by borrowing or `Arc`; predictions never copy sessions or postings.
+/// Memory scales with retained training events, item postings (bounded by index
+/// capacity per item) and item statistics. Mixed IDF models may initialize one
+/// additional item-sized map, shared safely by all models and workers. Older
+/// weighted CSV constructors can also require a unit legacy statistics cache.
 #[derive(Serialize, Deserialize)]
 pub struct VMISIndex {
+    // Scoring caches and scale metadata are not part of snapshot v3.
+    // Separate caches also support mixing models on older weighted CSV indexes.
+    #[serde(skip)]
+    pub(crate) legacy_idf: std::sync::OnceLock<HashMap<u64, f64>>,
+    #[serde(skip)]
+    pub(crate) reference_idf_scores: std::sync::OnceLock<HashMap<u64, f64>>,
+    #[serde(skip)]
+    pub(crate) unit_legacy_idf: bool,
     pub(crate) chronological_events: bool,
     pub(crate) candidate_capacity: Option<usize>,
     pub(crate) reference_idf: bool,
@@ -132,6 +148,14 @@ impl VMISIndex {
     /// Load immutable corpus structures at a structural retrieval capacity.
     /// Scoring parameters belong to ScoringView, not to this operation.
     pub fn load_corpus(path: &str, capacity: usize) -> Result<Self, String> {
+        Self::load_with_capacity(path, Some(capacity), false)
+    }
+
+    pub(crate) fn load_with_capacity(
+        path: &str,
+        capacity: Option<usize>,
+        normalize_snapshot: bool,
+    ) -> Result<Self, String> {
         if Path::new(path).is_dir() {
             return Self::try_new(path).map_err(|e| e.to_string());
         }
@@ -144,15 +168,31 @@ impl VMISIndex {
         let index: Self = if reader.read_exact(&mut header).is_ok()
             && &header == b"SERENADE-VMIS-003"
         {
-            bincode::deserialize_from(reader)
-                .map_err(|e| format!("Invalid VMIS snapshot: {}", e))?
+            let mut index: Self = bincode::deserialize_from(reader)
+                .map_err(|e| format!("Invalid VMIS snapshot: {}", e))?;
+            index.validate().map_err(|e| e.to_string())?;
+            // Older snapshots may contain a model's baked-in legacy IDF weight.
+            // Restore unit statistics for independently configured library models.
+            if normalize_snapshot && index.chronological_events && !index.reference_idf {
+                index.item_to_idf_score = index.compute_idf(false);
+                index.unit_legacy_idf = true;
+            }
+            index
         } else {
             if header.starts_with(b"SERENADE-VMIS") {
                 return Err("Unsupported VMIS snapshot version; rebuild from training data".into());
             }
-            Self::try_new_from_csv(path, capacity, 1.0).map_err(|e| e.to_string())?
+            Self::try_new_from_csv(
+                path,
+                capacity.unwrap_or(crate::paths::DEFAULT_INDEX_CAPACITY),
+                1.0,
+            )
+            .map_err(|e| e.to_string())?
         };
-        if index.candidate_capacity.is_some_and(|m| capacity > m) {
+        if index
+            .candidate_capacity
+            .is_some_and(|m| capacity.is_some_and(|capacity| capacity > m))
+        {
             return Err(
                 "Requested m exceeds snapshot posting capacity; rebuild from training CSV".into(),
             );
@@ -169,6 +209,8 @@ impl VMISIndex {
         config: &super::algorithms::KnnConfig,
     ) -> Result<(), String> {
         config.validate()?;
+        self.legacy_idf.take();
+        self.reference_idf_scores.take();
         if self
             .candidate_capacity
             .map_or(false, |capacity| m > capacity)
@@ -195,21 +237,12 @@ impl VMISIndex {
             && self.chronological_events
         {
             // Restore the legacy formula without adding a second permanent IDF map.
-            let mut counts = HashMap::<u64, usize>::new();
-            for sequence in &self.session_to_items_sorted {
-                let unique: hashbrown::HashSet<_> = sequence.iter().copied().collect();
-                if unique.len() <= self.training_data_stats.qty_events_p99_5 as usize {
-                    for item in unique {
-                        *counts.entry(item).or_default() += 1;
-                    }
-                }
+            self.item_to_idf_score = self.compute_idf(false);
+            for value in self.item_to_idf_score.values_mut() {
+                *value *= legacy_idf_weight;
             }
-            let total = counts.values().sum::<usize>() as f64;
-            self.item_to_idf_score = counts
-                .into_iter()
-                .map(|(item, count)| (item, (total / count as f64).ln() * legacy_idf_weight))
-                .collect();
             self.reference_idf = false;
+            self.unit_legacy_idf = legacy_idf_weight == 1.0;
         }
         self.validate().map_err(|e| e.to_string())?;
         Ok(())
@@ -227,7 +260,12 @@ impl VMISIndex {
     /// Owned allocation estimate, excluding hash-table control bytes and allocator overhead.
     pub fn estimated_heap_bytes(&self) -> usize {
         use std::mem::size_of;
-        self.session_to_items_sorted.capacity() * size_of::<Vec<u64>>()
+        [&self.legacy_idf, &self.reference_idf_scores]
+            .iter()
+            .filter_map(|cache| cache.get())
+            .map(|map| map.capacity() * size_of::<(u64, f64)>())
+            .sum::<usize>()
+            + self.session_to_items_sorted.capacity() * size_of::<Vec<u64>>()
             + self
                 .session_to_items_sorted
                 .iter()
@@ -244,16 +282,35 @@ impl VMISIndex {
             + self.item_to_product_attributes.capacity() * size_of::<(u64, ProductAttributes)>()
     }
 
-    fn set_reference_idf(&mut self) {
+    pub(crate) fn compute_idf(&self, reference: bool) -> HashMap<u64, f64> {
         let mut counts = HashMap::<u64, usize>::new();
-        for item in self.session_to_items_sorted.iter().flatten() {
-            *counts.entry(*item).or_default() += 1;
+        for sequence in &self.session_to_items_sorted {
+            if reference {
+                for item in sequence {
+                    *counts.entry(*item).or_default() += 1;
+                }
+            } else {
+                let unique: hashbrown::HashSet<_> = sequence.iter().copied().collect();
+                if unique.len() <= self.training_data_stats.qty_events_p99_5 as usize {
+                    for item in unique {
+                        *counts.entry(item).or_default() += 1;
+                    }
+                }
+            }
         }
-        let sessions = self.session_to_items_sorted.len() as f64;
-        self.item_to_idf_score = counts
+        let total = if reference {
+            self.session_to_items_sorted.len() as f64
+        } else {
+            counts.values().sum::<usize>() as f64
+        };
+        counts
             .into_iter()
-            .map(|(item, count)| (item, (sessions / count as f64).ln()))
-            .collect();
+            .map(|(item, count)| (item, (total / count as f64).ln()))
+            .collect()
+    }
+
+    fn set_reference_idf(&mut self) {
+        self.item_to_idf_score = self.compute_idf(true);
         self.reference_idf = true;
     }
 
@@ -303,6 +360,9 @@ impl VMISIndex {
             );
 
         let index = VMISIndex {
+            legacy_idf: Default::default(),
+            reference_idf_scores: Default::default(),
+            unit_legacy_idf: idf_weighting == 1.0,
             chronological_events: true,
             candidate_capacity: Some(m_most_recent_sessions),
             reference_idf: false,
@@ -553,6 +613,9 @@ impl VMISIndex {
         }
 
         let index = VMISIndex {
+            legacy_idf: Default::default(),
+            reference_idf_scores: Default::default(),
+            unit_legacy_idf: false,
             chronological_events: false,
             candidate_capacity: None,
             reference_idf: false,
@@ -945,6 +1008,20 @@ mod sequence_tests {
         assert!(index.reference_idf);
         assert!((index.idf(&1) - (2.0_f64 / 3.0).ln()).abs() < 1e-12);
         index.save(snapshot.to_str().unwrap()).unwrap();
+        // v3 predates scoring caches: its original nine fields must stay wire-compatible.
+        let old_payload = crate::serialization::serialize(&(
+            index.chronological_events,
+            index.candidate_capacity,
+            index.reference_idf,
+            &index.item_to_top_sessions_ordered,
+            &index.session_to_max_time_stamp,
+            &index.item_to_idf_score,
+            &index.session_to_items_sorted,
+            &index.training_data_stats,
+            &index.item_to_product_attributes,
+        ))
+        .unwrap();
+        assert_eq!(&fs::read(&snapshot).unwrap()[17..], old_payload);
         let restored =
             VMISIndex::load_for_model(snapshot.to_str().unwrap(), 10, 1.0, &reference).unwrap();
         assert_eq!(
@@ -1184,6 +1261,17 @@ mod statistics_integration_tests {
         assert_eq!(index.training_data_stats.session_duration_p100, 8);
         assert_eq!(index.session_to_items_sorted, vec![vec![7]]);
         drop(index);
+        let index = VMISIndex::load(&base).unwrap();
+        let vmis = crate::Recommender::new(&index, crate::ModelConfig::default()).unwrap();
+        assert!(vmis.predict_at(&[7], 20, 10.0).is_ok());
+        for algorithm in super::super::algorithms::Algorithm::ALL {
+            let model = crate::ModelConfig::for_algorithm(algorithm);
+            let requires_raw = model.knn.positional() || model.knn.needs_reference_idf();
+            assert_eq!(
+                crate::Recommender::new(&index, model).is_err(),
+                requires_raw
+            );
+        }
         fs::remove_dir_all(base).unwrap();
     }
 }

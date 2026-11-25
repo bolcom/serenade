@@ -30,15 +30,23 @@ impl Ord for RankedNeighbor {
 }
 use super::{similarity_indexed::SimilarityComputationNew, SessionScore};
 
+/// Scoring algorithm; all variants use the same bounded VMIS candidate index.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Algorithm {
+    /// VMIS similarity and legacy IDF-weighted item scoring (the default).
     Vmis,
+    /// Session nearest neighbors with set-based session similarity.
     Sknn,
+    /// Sequential session nearest neighbors with matched-distance weighting.
     Ssknn,
+    /// Session neighbors weighted by position and matched distance.
     Wsknn,
+    /// Vector-weighted session nearest neighbors, with optional reference IDF.
     Vsknn,
+    /// Session-position, neighbor-age and item-distance decay.
     Stan,
+    /// Vector-weighted neighbors combined with STAN decay and optional IDF.
     VsknnStan,
 }
 impl std::str::FromStr for Algorithm {
@@ -57,6 +65,7 @@ impl std::str::FromStr for Algorithm {
     }
 }
 impl Algorithm {
+    /// All seven supported algorithms, in the order shown in the crate guide.
     pub const ALL: [Self; 7] = [
         Self::Vmis,
         Self::Sknn,
@@ -66,6 +75,7 @@ impl Algorithm {
         Self::Stan,
         Self::VsknnStan,
     ];
+    /// Canonical name used in portable TOML model files.
     pub fn name(self) -> &'static str {
         match self {
             Self::Vmis => "vmis",
@@ -80,6 +90,7 @@ impl Algorithm {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Session similarity measure used by the selected algorithm.
 pub enum Similarity {
     Jaccard,
     Cosine,
@@ -102,6 +113,7 @@ impl std::str::FromStr for Similarity {
 }
 #[derive(Clone, Copy, Debug, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Position or matched-distance weighting, using the reference algorithm formulas.
 pub enum Weighting {
     Same,
     Linear,
@@ -157,22 +169,39 @@ impl Weighting {
     }
 }
 #[derive(Clone, Debug, serde::Serialize)]
+/// Algorithm-specific scoring settings shared with portable TOML models.
+/// Start with [`Self::for_algorithm`] to get the same defaults as the applications.
+/// Irrelevant settings are ignored by algorithms that do not use them.
 pub struct KnnConfig {
+    /// Scoring algorithm.
     pub algorithm: Algorithm,
+    /// Session similarity measure.
     pub similarity: Similarity,
+    /// Current-session position weighting.
     pub weighting: Weighting,
+    /// Matched-distance item score weighting.
     pub weighting_score: Weighting,
+    /// Apply reference recency weighting to neighbors.
     pub weighting_time: bool,
+    /// Reference item IDF multiplier (legacy VMIS uses `ModelConfig::idf_weighting`).
     pub idf_weighting: f64,
+    /// Apply reference IDF to current-session similarity weights.
     pub idf_weighting_session: bool,
+    /// Allow recommendations of items already in the input session.
     pub remind: bool,
+    /// Normalize item scores using the selected algorithm's reference semantics.
     pub normalize: bool,
+    /// Popularity boost for supported reference algorithms.
     pub pop_boost: f64,
+    /// STAN session-position decay; positive when enabled, `None` disables it.
     pub lambda_spw: Option<f64>,
-    /// Days, as in the Python constructor.
+    /// STAN neighbor-age decay in days; positive when enabled, `None` disables it.
     pub lambda_snh: Option<f64>,
+    /// STAN matched-distance decay; positive when enabled.
     pub lambda_inh: Option<f64>,
+    /// VSKNN-STAN item-position decay; positive when enabled.
     pub lambda_ipw: Option<f64>,
+    /// VSKNN-STAN IDF multiplier; finite when enabled.
     pub lambda_idf: Option<f64>,
 }
 impl Default for KnnConfig {

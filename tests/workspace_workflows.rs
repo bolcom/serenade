@@ -1,3 +1,4 @@
+#![cfg(feature = "applications")]
 //! Configuration paths and portable exports exercised from an unrelated working directory.
 use serenade::{config, vmisknn::vmis_index::VMISIndex};
 use std::{
@@ -106,6 +107,15 @@ fn default_workflow_portability_multiple_models_and_benchmark() {
     std::fs::write(moved.join("test.txt"), test).unwrap();
     std::fs::remove_file(moved.join("hpo.toml")).unwrap();
     let model = moved.join("best-vmis.toml");
+    let shared = VMISIndex::load(moved.join("train.txt")).unwrap();
+    for algorithm in serenade::Algorithm::ALL {
+        let path = moved.join(format!("best-{}.toml", algorithm.name()));
+        let recommender = serenade::Recommender::from_config(&shared, path).unwrap();
+        assert!(!recommender
+            .predict_at(&[10, 20], 20, 114.0)
+            .unwrap()
+            .is_empty());
+    }
     let model_arg = model.to_str().unwrap();
     f.ok(env!("CARGO_BIN_EXE_evaluator"), &["--model", model_arg]);
     assert_eq!(rows(&moved.join("evaluation.csv")), 1);
