@@ -34,12 +34,19 @@ use super::{similarity_indexed::SimilarityComputationNew, SessionScore};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Algorithm {
+    /// VMIS similarity and legacy IDF-weighted item scoring (the default).
     Vmis,
+    /// Session nearest neighbors with set-based session similarity.
     Sknn,
+    /// Sequential session nearest neighbors with matched-distance weighting.
     Ssknn,
+    /// Session neighbors weighted by position and matched distance.
     Wsknn,
+    /// Vector-weighted session nearest neighbors, with optional reference IDF.
     Vsknn,
+    /// Session-position, neighbor-age and item-distance decay.
     Stan,
+    /// Vector-weighted neighbors combined with STAN decay and optional IDF.
     VsknnStan,
 }
 impl std::str::FromStr for Algorithm {
@@ -58,6 +65,7 @@ impl std::str::FromStr for Algorithm {
     }
 }
 impl Algorithm {
+    /// All seven supported algorithms, in the order shown in the crate guide.
     pub const ALL: [Self; 7] = [
         Self::Vmis,
         Self::Sknn,
@@ -67,6 +75,7 @@ impl Algorithm {
         Self::Stan,
         Self::VsknnStan,
     ];
+    /// Canonical name used in portable TOML model files.
     pub fn name(self) -> &'static str {
         match self {
             Self::Vmis => "vmis",
