@@ -11,34 +11,20 @@ Keep them unless the workflow and its dependencies are updated together.
 | `test_release_version.py` | Validates release version logic before tagging. |
 | `package_release.py` | Smoke-tests and packages native release applications. |
 | `test_package_release.py` | Validates packaging before building release artifacts. |
+| `publish_release.py` | Publishes or resumes matching GitHub and crates.io releases. |
+| `test_publish_release.py` | Tests publication recovery and source identity checks without publishing. |
 
 ## Build and publish a release
 
-1. Create a branch from `main` named `release/<version>`.
-2. Increase the package version in both `Cargo.toml` and `Cargo.lock`.
-3. Push the branch and open a PR. Pushes to `release/**` test and build binaries
-   as workflow artifacts; they do not publish a GitHub Release.
-4. Merge the PR normally. A push to `main` that increases the package version
-   tests, builds, packages and smoke-tests Windows x86_64, Linux x86_64,
-   macOS x86_64 and macOS ARM64 binaries from the merged commit, then creates
-   the version tag and publishes the archives and checksums to GitHub Releases.
+Increase `package.version` in `Cargo.toml`, refresh `Cargo.lock` with Cargo and
+merge into `main`. The workflow automatically tests and publishes all four native
+binary archives and the corresponding crate from the same commit, using the
+existing `CARGO_REGISTRY_TOKEN` secret. No separate tag or publication step is
+needed. Pushes to `release/**` validate without publication.
 
-Pushes to `main` without a version increase skip
-binary builds and publication. Publication requires every platform build to
-succeed. A failed run can be rerun after investigating the failure; an incomplete
-release draft must be inspected and removed explicitly before retrying publication.
-
-### Manual runs and tag releases
-
-The **Binary release** workflow also supports **Run workflow** for build-only
-validation. To publish manually, first create a version tag on the intended
-commit, then select **Publish a GitHub Release** and enter that existing tag
-(for example `v0.3.6`). Pushing a version tag also builds and publishes it.
-Do not start a tag release while an automatic release for the same version is
-running.
-
-Workflow tokens must be allowed to write repository contents for publication.
-Normal PR reviews still apply.
+See [Releasing Serenade](../docs/RELEASING.md) for validation, retry behavior and
+optional manual workflow runs. Failed publication can be resumed by rerunning the
+workflow; do not delete drafts or move version tags.
 
 ## Optional development tools
 

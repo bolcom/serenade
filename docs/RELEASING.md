@@ -1,39 +1,58 @@
 # Releasing Serenade
 
-The release workflow validates one immutable source commit before distributing
-GitHub binaries and the crates.io package. The release tag must equal
-`v<package.version>` from that commit's `Cargo.toml`. Default Cargo features build
-exactly `tpe_hyperparameter_optm`, `evaluator` and `serving`; package users can
-disable default features to compile only the recommendation library.
+`Cargo.toml`'s `package.version` is the single source of truth. Increase it and
+refresh the derived `Cargo.lock` with Cargo, then merge the change into `main`.
+No tag creation, workflow dispatch, environment approval or local publication is
+required. The existing repository secret `CARGO_REGISTRY_TOKEN` authenticates
+crates.io publication; it must be a valid token authorized to publish `serenade`.
+GitHub publication uses the workflow's `contents: write` permission.
 
-Before enabling publication, a crate owner must configure the `serenade` crate's
-crates.io trusted publisher for GitHub repository `bolcom/serenade`, workflow
-`release.yml`, environment `crates-io`. Create that GitHub environment and restrict
-its publishing branches/tags and reviewers according to maintainer policy. The
-[official crates.io authentication action](https://github.com/rust-lang/crates-io-auth-action)
-exchanges GitHub OIDC identity for a temporary token and revokes it after the job.
-No long-lived Cargo API token is stored in the repository or GitHub secrets.
+The [release workflow](../.github/workflows/release.yml) detects a version increase
+between the previous and new `main` commits and resolves the new commit once.
+Every job checks out that immutable commit. The workflow:
 
-Increment `package.version` on `main` to trigger the existing automatic release,
-push a matching version tag, or dispatch the workflow with `publish=true` and an
-existing matching tag. Dispatch with `publish=false` to validate without publishing.
-Never reuse a version for different source. Both distributions check out the same
-resolved commit; crate validation, minimal-feature tests/docs and all four native
-binary builds must pass before publication. Cargo's publish command validates the
-package again; disabling features for validation does not change the published
-manifest's default features or `cargo install serenade` behavior.
+1. Tests, builds, packages and smoke-tests the three applications on Windows
+   x86_64, Linux x86_64, macOS x86_64 and macOS ARM64.
+2. Tests the minimal-feature library, checks its dependency graph, builds its
+   documentation with warnings denied and validates the default-feature crate
+   using `cargo publish --locked --dry-run`.
+3. Creates the matching `v<package.version>` tag and a draft GitHub release,
+   uploads all four archives and SHA-256 checksums, and verifies downloaded assets.
+4. Publishes the crate using `cargo +stable publish --locked` and the existing
+   token, confirms the registry's crate records that exact source commit, then
+   makes the GitHub release public.
 
-The package allowlist includes source, examples, tests, documentation, Apache-2.0
-license and the upstream WSKNN BSD notice. It excludes datasets, build artifacts,
-local indexes and development reports. Review with `cargo package --list`.
+Both distributions therefore identify the same version and commit. A source JSON
+asset records the version, commit and archive hashes. Default Cargo features build
+exactly `tpe_hyperparameter_optm`, `evaluator` and `serving`; library consumers can
+use `--no-default-features` to avoid application dependencies. The package allowlist
+includes source, examples, tests, documentation, Apache-2.0 license and the upstream
+WSKNN BSD notice, excluding local data and build artifacts.
 
-GitHub and crates.io cannot be published transactionally. The job publishes the
-verified GitHub release first, then the corresponding crate. If crates.io fails,
-inspect the published tag and source, fix publisher permissions if necessary, and
-publish that exact commit with `cargo publish --locked --no-default-features`.
-Do not move the tag or increment the version to disguise an incomplete release.
-The workflow refuses to overwrite existing GitHub releases; a partial release
-requires maintainer recovery, rather than an automatic replacement.
+## Retries and recovery
+
+GitHub and crates.io cannot be published transactionally. A failed upload leaves
+a recoverable draft rather than requiring deletion or a separate local publish.
+Rerun the failed workflow: publication jobs for each version are serialized, matching draft assets
+can be replaced, and a matching already published crate is skipped. Cargo upload
+timeouts are checked against the actual registry archive before reporting failure.
+An already public GitHub release is downloaded and verified, never overwritten;
+its original archives can differ from a later rebuild. Missing crate publication
+can still be completed for that matching release.
+
+A conflicting tag, a crate from another commit, missing provenance or corrupted
+assets fails closed. Never move a published tag or reuse a version for different
+source. Investigate such a conflict rather than trying to overwrite it. Registry
+or GitHub outages require a workflow retry after service recovery, not manual
+publication. If the original run is unavailable, dispatch the workflow with
+`publish=true` and its existing version tag to resume that exact commit.
+
+Pushes to `main` without a version increase skip builds/publication. Pushes to
+`release/**` and dispatches with `publish=false` validate without publishing.
+An explicit `release/<version>` branch is optional. Pushing a matching version
+tag or dispatching with `publish=true` also builds, validates and publishes that
+tag's commit; the tag must match its Cargo version. No release path edits the
+version or selects a second source commit.
 
 Local checks (no publication):
 
@@ -42,6 +61,6 @@ cargo test --locked
 cargo test --locked --no-default-features
 cargo doc --locked --no-default-features --no-deps
 cargo build --locked --release
-cargo publish --locked --no-default-features --dry-run
+cargo publish --locked --dry-run
 python -m unittest discover -s scripts
 ```
