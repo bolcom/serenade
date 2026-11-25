@@ -11,7 +11,7 @@ authors = ["submission@sigmod2021.org"]
 edition = "2021"
 rust-version = "1.89"
 autobins = false
-include = ["src/**", "examples/**", "tests/**", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE.md", "docs/*.md", "docs/third-party/**"]
+include = ["/src/**", "/examples/**", "/tests/*.rs", "/tests/reference/*.json", "/tests/reference/*.tsv", "/tests/reference/*.py", "/tests/reference/README.md", "/Cargo.toml", "/Cargo.lock", "/README.md", "/LICENSE.md", "/docs/*.md", "/docs/third-party/**"]
 
 [package.metadata.docs.rs]
 no-default-features = true
