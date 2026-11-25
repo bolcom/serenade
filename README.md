@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/serenade?style=flat-square)](https://crates.io/crates/serenade)
 [![Crates.io](https://img.shields.io/crates/d/serenade?style=flat-square)](https://crates.io/crates/serenade)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](https://github.com/bolcom/serenade/LICENSE.md)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE.md)
 [![Build Status](https://github.com/bolcom/serenade/actions/workflows/release.yml/badge.svg)](https://github.com/bolcom/serenade/actions/workflows/release.yml)
 [![API Docs](https://docs.rs/serenade/badge.svg)](https://docs.rs/serenade)
 [![Contributors](https://img.shields.io/github/contributors/bolcom/serenade?style=flat-square)](https://github.com/bolcom/serenade/graphs/contributors)
@@ -14,129 +14,8 @@ Serenade is an open-source, high-performance session-based recommendation system
 
 The research introduces two complementary contributions:
 
-VMIS-kNN — Scalable recommendation algorithm. An efficient adaptation of the state-of-the-art VS-KNN algorithm. VMIS-kNN introduces specialized indexing data structures and an optimized neighbor retrieval algorithm using bounded candidate selection and early stopping. With fixed retrieval parameters, the computational complexity of candidate retrieval depends on the length of the evolving session rather than the size of the historical training corpus, enabling low-latency recommendations across billions of interactions.
-
-Serenade — Production recommendation system. A scalable, stateful recommendation service built around VMIS-kNN, combining real-time session management, low-latency recommendation serving, and efficient resource utilization. Originally deployed at bol.com, Serenade demonstrates that high-quality session-based nearest-neighbor recommendations can operate at industrial scale with low latency and modest computational resources.
-
-## Two ways to use Serenade
-
-As a standalone recommendation system: **TPE hyperparameter optimization → Offline
-evaluation (with optional benchmarking) → Real-time serving**.
-
-As an embedded Rust recommendation library: **Load index → Configure recommender → Predict**.
-Both use the same indexing, model configuration and prediction implementation.
-
-### Embedded Rust library
-
-Install the library with minimal dependencies:
-
-```sh
-cargo add serenade --no-default-features
-```
-
-This excludes Actix, RocksDB, Prometheus and TPE. Load the same tab-separated
-`SessionId`, `ItemId`, `Time` training data used by the applications (Unix seconds):
-
-```rust
-use serenade::{Algorithm, ModelConfig, Recommender, VMISIndex};
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let index = VMISIndex::load("train.txt")?;
-    let vmis = Recommender::new(&index, ModelConfig::for_algorithm(Algorithm::Vmis))?;
-    let session = &[13598, 2835, 12068];
-    for recommendation in vmis.predict(session, 20)? {
-        println!("{}: {}", recommendation.id, recommendation.score);
-    }
-    Ok(())
-}
-```
-
-Use HPO-generated model files directly, and share one immutable index across algorithms:
-
-```rust
-use serenade::{Recommender, VMISIndex};
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let index = VMISIndex::load("train.txt")?;
-    let vmis = Recommender::from_config(&index, "best-vmis.toml")?;
-    let wsknn = Recommender::from_config(&index, "best-wsknn.toml")?;
-    let session = &[13598, 2835, 12068];
-    let recommendations_vmis = vmis.predict(session, 20)?;
-    let recommendations_wsknn = wsknn.predict(session, 20)?;
-    println!("VMIS: {recommendations_vmis:?}\nWSKNN: {recommendations_wsknn:?}");
-    Ok(())
-}
-```
-
-For explicit capacity and programmatic configuration:
-
-```rust
-use serenade::{Algorithm, ModelConfig, Recommender, VMISIndex};
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let index = VMISIndex::builder().capacity(1000).load("train.txt")?;
-    let mut config = ModelConfig::for_algorithm(Algorithm::Vsknn);
-    config.m_most_recent_sessions = 1000;
-    config.neighborhood_size_k = 100;
-    config.max_items_in_session = 5;
-    config.knn.idf_weighting = 1.5;
-    let recommender = Recommender::new(&index, config)?;
-    let recommendations = recommender.predict(&[13598, 2835, 12068], 20)?;
-    println!("{recommendations:?}");
-    Ok(())
-}
-```
-
-All seven algorithms are available through `Algorithm`. Recommendations are
-`Vec<Recommendation>` with public `id: u64` and `score: f64`, ranked best first
-(descending item ID for ties). Scores retain each algorithm's native semantics.
-Sessions run oldest to newest and are truncated to the configured recent history.
-`predict_at` accepts an explicit timestamp for reproducible time-decay predictions;
-`predict` uses the current time. Business filters are opt-in.
-
-Training data defaults to capacity 2500, independently of the selected model.
-Capacity never expands automatically; incompatible models fail during construction.
-`VMISIndex::load` also reads existing `.vmis` snapshots at their stored capacity
-and legacy Avro directories. Legacy indexes reject models requiring missing raw
-events and retain their precomputed VMIS IDF weights.
-
-Recommenders borrow the index and are `Send + Sync`. Share them across scoped
-threads, or share an `Arc<VMISIndex>` and construct recommenders inside each owner.
-Sessions and postings are never copied. Mixing IDF formulas adds at most one
-shared item-sized statistics map when using `load` or `builder`. Older weighted
-CSV constructors may also cache normalized legacy statistics. Predictions reuse thread-local scratch buffers;
-`predict_with_scratch` lets workers own those buffers explicitly. Index memory
-scales with retained events and bounded postings; scratch follows query size.
-
-See the [Rust API documentation](https://docs.rs/serenade), or run the complete
-example with `cargo run --no-default-features --example library -- train.txt best-vmis.toml`.
-
-### Standalone: optimize, evaluate, serve
-
-Download a binary package below, or install all three executables from source
-with `cargo install serenade` (requires a Rust toolchain and native RocksDB build
-dependencies). Default Cargo builds preserve the full standalone application set.
-
-Download and extract a [release](https://github.com/bolcom/serenade/releases).
-Windows packages contain `.exe` files; Linux and macOS use the same names without
-`.exe` (prefix commands with `./`). The spelling `tpe_hyperparameter_optm` is intentional.
-
-**1. Optimize**
-
-```powershell
-.\tpe_hyperparameter_optm.exe --config workspace/hpo.toml
-```
-
-**2. Evaluate and optionally benchmark**
-
-```powershell
-.\evaluator.exe --model workspace/best-vmis.toml --model workspace/best-sknn.toml --model workspace/best-ssknn.toml --model workspace/best-wsknn.toml --model workspace/best-vsknn.toml --model workspace/best-stan.toml --model workspace/best-vsknn_stan.toml --benchmark
-```
-
-**3. Serve**
-
-```powershell
-.\serving.exe --model workspace/best-vmis.toml --config workspace/serenade.toml
-```
-See [configuration details](docs/CONFIG.md) and [data preparation](docs/Preparation.md).
+- **VMIS-kNN — Scalable recommendation algorithm.** An efficient adaptation of the state-of-the-art VS-KNN algorithm. VMIS-kNN introduces specialized indexing data structures and an optimized neighbor retrieval algorithm using bounded candidate selection and early stopping. With fixed retrieval parameters, the computational complexity of candidate retrieval depends on the length of the evolving session rather than the size of the historical training corpus.
+- **Serenade — Production recommendation system.** A scalable, stateful recommendation service built around VMIS-kNN, combining real-time session management, low-latency recommendation serving, and efficient resource utilization. Originally deployed at bol.com, Serenade demonstrates that high-quality session-based nearest-neighbor recommendations can operate at industrial scale with low latency and modest computational resources.
 
 ## Performance at scale
 
@@ -148,16 +27,15 @@ Our research demonstrates that session-based nearest-neighbor methods can achiev
 - **2.3 billion historical interactions** processed, with 582 million retained after index pruning, covering approximately 6.5 million distinct products.
 - **Approximately 11 GB of index memory** per serving instance at this production scale.
 
-These results demonstrate how carefully designed algorithms and data structures can make session-based nearest-neighbor recommendation practical at massive scale.
-
 *These performance figures originate from the original SIGMOD 2022 research and production deployment of VMIS-kNN. They do not represent benchmark results for all algorithms supported by the extended Serenade implementation.*
 
-## Extending Serenade with additional scalable kNN algorithms
+## Supported recommendation algorithms
 
 Building on the original VMIS-kNN research, **we extend Serenade with scalable adaptations of six established session-based kNN algorithms**, preserving their distinctive scoring methods while leveraging VMIS-kNN's efficient neighbor retrieval architecture.
 
 | Algorithm | Paper | Publication |
 |---|---|---|
+| **VMIS-kNN** | [Serenade: Low-Latency Session-Based Recommendation in e-Commerce at Scale](https://doi.org/10.1145/3514221.3517901) | SIGMOD '22 |
 | **SKNN** | [When Recurrent Neural Networks meet the Neighborhood for Session-Based Recommendation](https://doi.org/10.1145/3109859.3109872) | RecSys '17 |
 | **S-SKNN (SeqContextKNN)** | [Evaluation of session-based recommendation algorithms](https://doi.org/10.1007/s11257-018-9209-6) | UMUAI '18 |
 | **WSKNN** | [WSKNN: Weighted session-based KNN algorithm for next-item recommendation](https://doi.org/10.21105/joss.05639) | JOSS '23 |
@@ -165,7 +43,7 @@ Building on the original VMIS-kNN research, **we extend Serenade with scalable a
 | **STAN** | [Sequence and Time Aware Neighborhood for Session-based Recommendations: STAN](https://doi.org/10.1145/3331184.3331322) | SIGIR '19 |
 | **VSKNN-STAN (VSTAN)** | [Empirical analysis of session-based recommendation algorithms: A comparison of neural and non-neural approaches](https://doi.org/10.1007/s11257-020-09277-1) | UMUAI '21 |
 
-As described in [Illoominate (Kersbergen et al., 2026)](https://doi.org/10.1145/3828670), session-based kNN-based recommendation can be decomposed into two functions: neighbor retrieval ($f_{ret}$) and item scoring ($f_{pred}$).
+As described in [Illoominate (Kersbergen et al., 2026)](https://doi.org/10.1145/3828670), session-based kNN recommendation can be decomposed into two functions: neighbor retrieval ($f_{ret}$) and item scoring ($f_{pred}$).
 
 **Our contribution is to introduce scalable adaptations of established session-based kNN algorithms by leveraging the VMISIndex for neighbor retrieval, while preserving their distinctive similarity and item scoring functions.** Through bounded, recency-ordered indexing and early stopping, neighbor retrieval scales with the length of the active session rather than the size of the historical session corpus, given fixed retrieval limits.
 
@@ -173,97 +51,173 @@ As described in [Illoominate (Kersbergen et al., 2026)](https://doi.org/10.1145/
 
 Serenade provides a complete workflow for developing, evaluating, and serving session-based nearest-neighbor recommendation models:
 
-- **Scalable recommendation algorithms:** Seven kNN approaches using the shared VMIS indexing and candidate retrieval approach.
+- **Scalable recommendation algorithms:** Seven kNN approaches using the shared VMIS indexing and candidate retrieval architecture.
 - **Automated hyperparameter optimization:** [Tree-structured Parzen Estimator (TPE) optimization](https://proceedings.mlr.press/v28/bergstra13.pdf) across selected algorithms, with configurable objectives such as `mrr@20`, `ndcg@8`, and `hitrate@10`.
-- **Offline evaluation:** Evaluate optimized models on held-out data using ranking and recommendation quality metrics.
+- **Offline evaluation and benchmarking:** Compare optimized models on held-out data using 15 recommendation quality metrics, and optionally measure prediction latency, throughput, index construction time and memory usage.
 - **Low-latency serving:** An HTTP recommendation service with session management backed by RocksDB.
 - **Ready-to-run binaries:** Windows, Linux, and macOS executables, without requiring Rust or a local build environment.
+- **Rust Cargo crates:** Direct, in-process recommendations using the same algorithms, index and model configurations as the standalone applications.
 
-The intended workflow is straightforward:
+## Getting started
+
+## Ready-to-run binaries: optimize, evaluate, serve
 
 **TPE hyperparameter optimization → Offline evaluation (with optional benchmarking) → Real-time serving**
 
-Each optimized algorithm produces a single configuration file that can be used directly by both the evaluator and serving applications.
+Each optimized algorithm produces a model configuration file that can be used directly by both the evaluator and the serving application.
 
-## Request recommendations
+#### Download and installation
 
-After starting serving:
+Download and extract a [binary release](https://github.com/bolcom/serenade/releases). The release packages contain all three executables and an example workspace.
+
+The following commands use Windows PowerShell. On Linux and macOS, use `./` instead of `.\` and omit the `.exe` extension.
+
+Alternatively, install the executables from crates.io:
+
+```sh
+cargo install serenade
+```
+
+Installing from source requires a Rust toolchain and native RocksDB build dependencies. The standard `cargo build --release` builds the same three executable targets: `tpe_hyperparameter_optm`, `evaluator`, and `serving`.
+
+See [binary packages](docs/BINARIES.md), [configuration](docs/CONFIG.md), and [data preparation](docs/Preparation.md) for details on preparing your own datasets and configuring the applications.
+
+#### Step 1 — Optimize
+
+Optimize the hyperparameters of the selected recommendation algorithms using training and validation data:
+
+```powershell
+.\tpe_hyperparameter_optm.exe --config workspace/hpo.toml
+```
+
+The optimizer writes a `best-*.toml` model configuration for each selected algorithm. The spelling `tpe_hyperparameter_optm` is intentional.
+
+#### Step 2 — Evaluate and benchmark
+
+Evaluate one or more optimized models on held-out test data. Add `--benchmark` to measure computational performance in addition to recommendation quality.
+
+```powershell
+.\evaluator.exe --model workspace/best-vmis.toml --model workspace/best-sknn.toml --model workspace/best-ssknn.toml --model workspace/best-wsknn.toml --model workspace/best-vsknn.toml --model workspace/best-stan.toml --model workspace/best-vsknn_stan.toml --benchmark
+```
+
+The evaluator reports results for each model configuration and writes them to a CSV file. See [supported evaluation metrics](#supported-evaluation-metrics) for the available recommendation quality metrics.
+
+#### Step 3 — Serve
+
+Start the recommendation service with the selected model configuration:
+
+```powershell
+.\serving.exe --model workspace/best-vmis.toml --config workspace/serenade.toml
+```
+
+The model configuration determines recommendation behavior; `serenade.toml` configures the serving infrastructure.
+
+#### Step 4 — Request recommendations
+
+Once the service is running, request recommendations over HTTP.
+
+**Using cURL:**
 
 ```sh
 curl "http://localhost:8081/v1/recommend?item_id=13598&session_id=example&user_consent=true"
 ```
 
-Use `curl.exe` in Windows PowerShell. The [internal page](http://localhost:8081/)
-and [Prometheus metrics](http://localhost:8081/internal/prometheus) are available
-while serving runs.
+Use `curl.exe` in Windows PowerShell.
 
-### 5. Retrieve recommendations using Python
+**Using Python:**
 
 Install the `requests` package with `python -m pip install requests`, then run:
 
 ```python
 import requests
-from requests.exceptions import HTTPError
 
-try:
-    myurl = 'http://localhost:8081/v1/recommend'
-    params = dict(
-        session_id='144',
-        user_consent='true',
-        item_id='13598',
-    )
-    response = requests.get(url=myurl, params=params, timeout=10)
-    response.raise_for_status()
-    # Access JSON content.
-    json_response = response.json()
-    print(json_response)
-except HTTPError as http_err:
-    print(f'HTTP error occurred: {http_err}')
-except Exception as err:
-    print(f'Other error occurred: {err}')
+response = requests.get(
+    "http://localhost:8081/v1/recommend",
+    params={
+        "session_id": "144",
+        "user_consent": "true",
+        "item_id": "13598",
+    },
+    timeout=10,
+)
+response.raise_for_status()
+print(response.json())
 ```
 
-Example response (the items and list length depend on the dataset, algorithm, configuration, and session history):
+Example response (shortened):
 
 ```json
-[2835,10,12068,4313,3097,8028,3545,7812,17519,1164,17935,1277,13335,8655,14664,14556,6868,13509,9248,2498,11724]
+[2835,10,12068,4313,3097,8028,3545,7812,17519,1164]
 ```
 
-The returned JSON array is a list of recommended item IDs.
+The returned JSON array is a ranked list of recommended item IDs. The actual items and list length depend on the dataset, algorithm, configuration, and session history.
 
-For more details, see [Binary packages](docs/BINARIES.md), [Configuration](docs/CONFIG.md), and [Data preparation](docs/Preparation.md).
+The service also exposes an [internal page](http://localhost:8081/) and [Prometheus metrics](http://localhost:8081/internal/prometheus).
 
-## Index export and external predictions
 
-The standard `cargo build --release` builds exactly `tpe_hyperparameter_optm`,
-`evaluator`, and `serving`. Binary targets are declared explicitly in `Cargo.toml`;
-automatic discovery in `src/bin/` is disabled.
+## Advanced usage
 
-To construct and persist an index without starting the server:
+### Index export and persistence
+
+Construct and persist an index without starting the HTTP server:
 
 ```sh
 serving --model workspace/best-vmis.toml --config workspace/serenade.toml --build-index index.vmis --training-statistics training-stats.bin
 ```
 
-`--training-statistics` is optional and exports raw corpus aggregates for legacy
-Avro indexes. This mode uses the configured index capacity and exits before opening
-the session database or HTTP listener. Load the snapshot with `serving --model
-workspace/best-vmis.toml --config workspace/serenade.toml --index index.vmis`.
-Evaluator benchmark snapshots remain available through `--snapshot-dir`.
+`--training-statistics` is optional and exports raw corpus aggregates for legacy Avro indexes. This mode uses the configured index capacity and exits before opening the session database or HTTP listener.
 
-To score predictions produced by another model:
+Load the persisted index when starting the service:
+
+```sh
+serving --model workspace/best-vmis.toml --config workspace/serenade.toml --index index.vmis
+```
+
+Evaluator benchmark snapshots are available through `--snapshot-dir`.
+
+### Evaluation of external predictions
+
+Use Serenade's evaluation metrics to score predictions produced by another recommendation model:
 
 ```sh
 evaluator --train workspace/train.txt --predictions predictions.txt
 ```
 
-Each line contains comma-separated recommendation IDs, a semicolon, then
-comma-separated next-item IDs: `10,20,30;20,40`. Empty recommendation lists and
-trailing commas are accepted; next-item lists must contain at least one ID.
-This mode prints the evaluation count and all fifteen metrics at 20 as CSV to stdout.
-Malformed prediction rows fail with the filename and line number.
-See [metric definitions](docs/METRICS.md) for the new metrics and HPO directions.
-These commands replace the former `build_index` and `evaluate_file` executables.
+Each line contains comma-separated recommendation IDs, a semicolon, then comma-separated next-item IDs: `10,20,30;20,40`. Empty recommendation lists and trailing commas are accepted; next-item lists must contain at least one ID.
+
+This mode prints the evaluation count and all fifteen metrics at 20 as CSV to stdout. Malformed prediction rows fail with the filename and line number.
+
+These two advanced modes replace the former `build_index` and `evaluate_file` executables.
+
+
+## Rust Cargo crates
+
+Serenade can also be embedded directly in Rust applications without running an HTTP service. All seven algorithms are available through the library and use the same implementation and model configurations as the standalone applications.
+
+Install the library with minimal dependencies:
+
+```sh
+cargo add serenade --no-default-features
+```
+
+Load an index and reuse an HPO-generated model configuration to generate recommendations:
+
+```rust
+use serenade::{Recommender, VMISIndex};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let index = VMISIndex::load("train.txt")?;
+    let vmis = Recommender::from_config(&index, "best-vmis.toml")?;
+    let session = &[13598, 2835, 12068];
+    let recommendations = vmis.predict(session, 20)?;
+    println!("{recommendations:?}");
+    Ok(())
+}
+```
+
+Multiple recommenders can share a single immutable index without copying sessions or postings. The library also supports programmatic model configuration, explicit index capacity, persisted indexes and concurrent predictions. Minimal-feature builds exclude Actix, RocksDB, Prometheus and TPE.
+
+See the **[Rust API documentation on docs.rs](https://docs.rs/serenade)** for installation, examples, configuration, index sharing, concurrency and persistence. A complete runnable example is available with `cargo run --no-default-features --example library -- train.txt best-vmis.toml` from the repository.
 
 ## Supported evaluation metrics
 
