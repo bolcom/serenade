@@ -1,9 +1,9 @@
-name: Binary release
+name: Serenade release
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish a GitHub Release after all builds pass
+        description: Publish GitHub binaries and crates.io package after validation
         type: boolean
         default: false
       release_tag:
@@ -84,6 +84,11 @@ jobs:
               fi
             fi
             version="$tag"
+            package_version=$(git show "$ref:Cargo.toml" | python -c 'import sys,tomllib; print(tomllib.loads(sys.stdin.read())["package"]["version"])')
+            if [[ "v$package_version" != "$version" ]]; then
+              echo 'Release tag must match Cargo.toml package.version.' >&2
+              exit 1
+            fi
           fi
           echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
@@ -157,13 +162,48 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 14
+  crate:
+    if: needs.prepare.outputs.build == 'true'
+    needs: prepare
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal --no-self-update
+      - name: Test library with minimal dependencies
+        run: cargo +stable test --locked --no-default-features
+      - name: Validate minimal dependency graph
+        shell: bash
+        run: |
+          cargo +stable tree --locked --no-default-features --prefix none > dependencies
+          if grep -E '^(actix-web|rocksdb|librocksdb-sys|actix-web-prom|prometheus|tpe) v' dependencies; then
+            echo 'Application dependency leaked into library build.' >&2
+            exit 1
+          fi
+      - name: Build library documentation
+        run: cargo +stable doc --locked --no-default-features --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+      - name: Validate crates.io package (no publication)
+        run: cargo +stable publish --locked --no-default-features --dry-run
   publish:
     if: needs.prepare.outputs.publish == 'true'
-    needs: [prepare, build]
+    needs: [prepare, build, crate]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
+      id-token: write
+    environment: crates-io
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal --no-self-update
       - uses: actions/download-artifact@v6
         with:
           pattern: serenade-*
@@ -204,3 +244,10 @@ jobs:
           gh release create "$TAG" --verify-tag --target "$RELEASE_SHA" --draft --title "Serenade $TAG" --generate-notes
           gh release upload "$TAG" dist/*
           gh release edit "$TAG" --draft=false
+      - name: Authenticate to crates.io with trusted publishing
+        uses: rust-lang/crates-io-auth-action@v1
+        id: crates-auth
+      - name: Publish corresponding Rust package
+        run: cargo +stable publish --locked --no-default-features
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}

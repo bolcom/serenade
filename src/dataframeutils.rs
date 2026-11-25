@@ -1,12 +1,16 @@
 use crate::serialization as bincode;
 use chrono::NaiveDateTime;
 use hashbrown::{HashMap, HashSet};
+#[cfg(feature = "serving")]
 use std::sync::Arc;
 use tdigest::TDigest;
 
+#[cfg(feature = "serving")]
 use crate::sessions::RocksDBSessionStore;
+#[cfg(feature = "serving")]
 use crate::vmisknn::vmis_index::VMISIndex;
 
+#[cfg(feature = "serving")]
 pub struct SharedHandlesAndConfig {
     pub knn: crate::vmisknn::algorithms::KnnConfig,
     pub session_store: Arc<RocksDBSessionStore>,

@@ -1,3 +1,4 @@
+#![cfg(feature = "applications")]
 //! Small end-to-end runs check shared objectives, best-trial reporting and generated configs.
 use serde_json::Value;
 use serenade::{

@@ -11,41 +11,59 @@ authors = ["submission@sigmod2021.org"]
 edition = "2021"
 rust-version = "1.89"
 autobins = false
+include = ["src/**", "examples/**", "tests/**", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE.md", "docs/*.md", "docs/third-party/**"]
+
+[package.metadata.docs.rs]
+no-default-features = true
+
+[features]
+default = ["applications"]
+applications = ["serving", "hpo"]
+serving = ["dep:actix-web", "dep:futures", "dep:rocksdb", "dep:actix-web-prom", "dep:uuid", "dep:md5"]
+evaluation = []
+hpo = ["evaluation", "dep:tpe", "dep:rand"]
 
 
 [[bin]]
 name = "serving"
 path = "src/bin/serving.rs"
+required-features = ["serving"]
 
 [[bin]]
 name = "evaluator"
 path = "src/bin/evaluator.rs"
+required-features = ["evaluation"]
 
 [[bin]]
 name = "tpe_hyperparameter_optm"
 path = "src/bin/tpe_hyperparameter_optm.rs"
+required-features = ["hpo"]
+
+[[example]]
+name = "prediction_benchmark"
+required-features = ["serving"]
 
 [dependencies]
 csv = "1.4.0"
 serde_json = "1.0.154"
-rand = "0.10.4"
+rand = { version = "0.10.4", optional = true }
 itertools = "0.15.0"
-actix-web = "4.20.0"
-futures = "0.3.34"
-rocksdb = {version = "0.25.0", default-features = false, features = ["bindgen-runtime"]}
+actix-web = { version = "4.20.0", optional = true }
+futures = { version = "0.3.34", optional = true }
+rocksdb = {optional = true, version = "0.25.0", default-features = false, features = ["bindgen-runtime"]}
 # 3.0.0 intentionally fails compilation; 2.0.1 is the last functional release.
 bincode = { version = "2.0.1", default-features = false, features = ["std", "serde"] }
 chrono = { version = "0.4.45", features = ["serde"] }
 serde = { version = "1.0.229", features = ["derive"] }
-actix-web-prom = "0.10.0"
+actix-web-prom = { version = "0.10.0", optional = true }
 sys-info = "0.9.1"
 hashbrown = {version = "0.17.2", features = ["serde"]}
 tdigest = "1.0.1"
-uuid = "1.29.3"
-md5 = "0.8.1"
+uuid = { version = "1.29.3", optional = true }
+md5 = { version = "0.8.1", optional = true }
 rayon = "1.12.0"
 dary_heap = "0.3.9"
 apache-avro = {version = "0.23.0", features = ["snappy"]}
 justconfig = "1.0.1"
-tpe = "0.3.1"
+tpe = { version = "0.3.1", optional = true }
 anyhow = "1.0.104"

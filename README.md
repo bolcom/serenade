@@ -18,7 +18,102 @@ VMIS-kNN — Scalable recommendation algorithm. An efficient adaptation of the s
 
 Serenade — Production recommendation system. A scalable, stateful recommendation service built around VMIS-kNN, combining real-time session management, low-latency recommendation serving, and efficient resource utilization. Originally deployed at bol.com, Serenade demonstrates that high-quality session-based nearest-neighbor recommendations can operate at industrial scale with low latency and modest computational resources.
 
-## Optimize, evaluate, serve
+## Two ways to use Serenade
+
+As a standalone recommendation system: **TPE hyperparameter optimization → Offline
+evaluation (with optional benchmarking) → Real-time serving**.
+
+As an embedded Rust recommendation library: **Load index → Configure recommender → Predict**.
+Both use the same indexing, model configuration and prediction implementation.
+
+### Embedded Rust library
+
+Install the library with minimal dependencies:
+
+```sh
+cargo add serenade --no-default-features
+```
+
+This excludes Actix, RocksDB, Prometheus and TPE. Load the same tab-separated
+`SessionId`, `ItemId`, `Time` training data used by the applications (Unix seconds):
+
+```rust
+use serenade::{Algorithm, ModelConfig, Recommender, VMISIndex};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let index = VMISIndex::load("train.txt")?;
+    let vmis = Recommender::new(&index, ModelConfig::for_algorithm(Algorithm::Vmis))?;
+    let session = &[13598, 2835, 12068];
+    for recommendation in vmis.predict(session, 20)? {
+        println!("{}: {}", recommendation.id, recommendation.score);
+    }
+    Ok(())
+}
+```
+
+Use HPO-generated model files directly, and share one immutable index across algorithms:
+
+```rust
+use serenade::{Recommender, VMISIndex};
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let index = VMISIndex::load("train.txt")?;
+    let vmis = Recommender::from_config(&index, "best-vmis.toml")?;
+    let wsknn = Recommender::from_config(&index, "best-wsknn.toml")?;
+    let session = &[13598, 2835, 12068];
+    let recommendations_vmis = vmis.predict(session, 20)?;
+    let recommendations_wsknn = wsknn.predict(session, 20)?;
+    println!("VMIS: {recommendations_vmis:?}\nWSKNN: {recommendations_wsknn:?}");
+    Ok(())
+}
+```
+
+For explicit capacity and programmatic configuration:
+
+```rust
+use serenade::{Algorithm, ModelConfig, Recommender, VMISIndex};
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let index = VMISIndex::builder().capacity(1000).load("train.txt")?;
+    let mut config = ModelConfig::for_algorithm(Algorithm::Vsknn);
+    config.m_most_recent_sessions = 1000;
+    config.neighborhood_size_k = 100;
+    config.max_items_in_session = 5;
+    config.knn.idf_weighting = 1.5;
+    let recommender = Recommender::new(&index, config)?;
+    let recommendations = recommender.predict(&[13598, 2835, 12068], 20)?;
+    println!("{recommendations:?}");
+    Ok(())
+}
+```
+
+All seven algorithms are available through `Algorithm`. Recommendations are
+`Vec<Recommendation>` with public `id: u64` and `score: f64`, ranked best first
+(descending item ID for ties). Scores retain each algorithm's native semantics.
+Sessions run oldest to newest and are truncated to the configured recent history.
+`predict_at` accepts an explicit timestamp for reproducible time-decay predictions;
+`predict` uses the current time. Business filters are opt-in.
+
+Training data defaults to capacity 2500, independently of the selected model.
+Capacity never expands automatically; incompatible models fail during construction.
+`VMISIndex::load` also reads existing `.vmis` snapshots at their stored capacity
+and legacy Avro directories. Legacy indexes reject models requiring missing raw
+events and retain their precomputed VMIS IDF weights.
+
+Recommenders borrow the index and are `Send + Sync`. Share them across scoped
+threads, or share an `Arc<VMISIndex>` and construct recommenders inside each owner.
+Sessions and postings are never copied. Mixing IDF formulas adds at most one
+shared item-sized statistics map when using `load` or `builder`. Older weighted
+CSV constructors may also cache normalized legacy statistics. Predictions reuse thread-local scratch buffers;
+`predict_with_scratch` lets workers own those buffers explicitly. Index memory
+scales with retained events and bounded postings; scratch follows query size.
+
+See the [Rust API documentation](https://docs.rs/serenade), or run the complete
+example with `cargo run --no-default-features --example library -- train.txt best-vmis.toml`.
+
+### Standalone: optimize, evaluate, serve
+
+Download a binary package below, or install all three executables from source
+with `cargo install serenade` (requires a Rust toolchain and native RocksDB build
+dependencies). Default Cargo builds preserve the full standalone application set.
 
 Download and extract a [release](https://github.com/bolcom/serenade/releases).
 Windows packages contain `.exe` files; Linux and macOS use the same names without

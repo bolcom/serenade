@@ -1,3 +1,4 @@
+#![cfg(feature = "applications")]
 //! Unified quality, benchmark and CSV regression checks on every supported algorithm.
 use serenade::{
     config::AppConfig,

@@ -42,8 +42,12 @@ impl PartialOrd for SessionScore {
 }
 
 #[derive(PartialEq, Debug)]
+/// A ranked recommendation. Scores retain each algorithm's native scale;
+/// they are not probabilities and need not be comparable across models.
 pub struct ItemScore {
+    /// The training corpus item identifier.
     pub id: u64,
+    /// The algorithm's score; larger values rank first.
     pub score: f64,
 }
 
@@ -318,7 +322,8 @@ fn rank_items<I: SimilarityComputationNew>(
     }
 
     // Return the proper amount of recommendations and filter them using business rules.
-    let mut top_items: BinaryHeap<ItemScore> = BinaryHeap::with_capacity(how_many);
+    let mut top_items: BinaryHeap<ItemScore> =
+        BinaryHeap::with_capacity(how_many.min(item_scores.len()));
     let current_item_attribs: Option<&ProductAttributes> = index.find_attributes(&most_recent_item);
     for (reco_item_id, reco_item_score) in item_scores.drain() {
         let scored_item = ItemScore::new(reco_item_id, reco_item_score);
@@ -426,6 +431,9 @@ mod vmisknn_test {
             );
 
         let vmis_index = VMISIndex {
+            legacy_idf: Default::default(),
+            reference_idf_scores: Default::default(),
+            unit_legacy_idf: true,
             chronological_events: true,
             candidate_capacity: Some(n_most_recent_sessions),
             reference_idf: false,
