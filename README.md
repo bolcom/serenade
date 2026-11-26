@@ -15,7 +15,7 @@ Serenade is an open-source, high-performance session-based recommendation system
 The research introduces two complementary contributions:
 
 - **VMIS-kNN — Scalable recommendation algorithm.** An efficient adaptation of the state-of-the-art VS-KNN algorithm. VMIS-kNN introduces specialized indexing data structures and an optimized neighbor retrieval algorithm using bounded candidate selection and early stopping. With fixed retrieval parameters, the computational complexity of candidate retrieval depends on the length of the evolving session rather than the size of the historical training corpus.
-- **Serenade — Production recommendation system.** A scalable, stateful recommendation service built around VMIS-kNN, combining real-time session management, low-latency recommendation serving, and efficient resource utilization. Originally deployed at bol.com, Serenade demonstrates that high-quality session-based nearest-neighbor recommendations can operate at industrial scale with low latency and modest computational resources.
+- **Serenade — Production recommendation system.** A scalable, stateful recommendation service built around VMIS-kNN, combining low-latency session management, low-latency recommendation serving, and efficient resource utilization. Originally deployed at bol.com, Serenade demonstrates that high-quality session-based nearest-neighbor recommendations can operate at industrial scale with low latency and modest computational resources.
 
 ## Performance at scale
 
@@ -62,7 +62,7 @@ Serenade provides a complete workflow for developing, evaluating, and serving se
 
 ## Ready-to-run binaries: optimize, evaluate, serve
 
-**TPE hyperparameter optimization → Offline evaluation (with optional benchmarking) → Real-time serving**
+**TPE hyperparameter optimization → Offline evaluation (with optional benchmarking) → low-latency serving**
 
 Each optimized algorithm produces a model configuration file that can be used directly by both the evaluator and the serving application.
 
