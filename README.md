@@ -43,7 +43,7 @@ Building on the original VMIS-kNN research, **we extend Serenade with scalable a
 | **STAN** | [Sequence and Time Aware Neighborhood for Session-based Recommendations: STAN](https://doi.org/10.1145/3331184.3331322) | SIGIR '19 |
 | **VSKNN-STAN (VSTAN)** | [Empirical analysis of session-based recommendation algorithms: A comparison of neural and non-neural approaches](https://doi.org/10.1007/s11257-020-09277-1) | UMUAI '21 |
 
-As described in [Illoominate (Kersbergen et al., 2026)](https://doi.org/10.1145/3828670), session-based kNN recommendation can be decomposed into two functions: neighbor retrieval ($f_{ret}$) and item scoring ($f_{pred}$).
+As described in [Illoominate – Data Shapley Values for Debugging Neighborhood-based Recommender Systems)](https://doi.org/10.1145/3828670), session-based kNN recommendation can be decomposed into two functions: neighbor retrieval ($f_{ret}$) and item scoring ($f_{pred}$).
 
 **Our contribution is to introduce scalable adaptations of established session-based kNN algorithms by leveraging the VMISIndex for neighbor retrieval, while preserving their distinctive similarity and item scoring functions.** Through bounded, recency-ordered indexing and early stopping, neighbor retrieval scales with the length of the active session rather than the size of the historical session corpus, given fixed retrieval limits.
 
@@ -52,7 +52,7 @@ As described in [Illoominate (Kersbergen et al., 2026)](https://doi.org/10.1145/
 Serenade provides a complete workflow for developing, evaluating, and serving session-based nearest-neighbor recommendation models:
 
 - **Scalable recommendation algorithms:** Seven kNN approaches using the shared VMIS indexing and candidate retrieval architecture.
-- **Automated hyperparameter optimization:** [Tree-structured Parzen Estimator (TPE) optimization](https://proceedings.mlr.press/v28/bergstra13.pdf) across selected algorithms, with configurable objectives such as `mrr@20`, `ndcg@8`, and `hitrate@10`.
+- **Automated hyperparameter optimization:** [Tree-structured Parzen Estimator (TPE) optimization](https://proceedings.neurips.cc/paper_files/paper/2011/file/86e8f7ab32cfd12577bc2619bc635690-Paper.pdf) across selected algorithms, with configurable objectives such as `mrr@20`, `ndcg@8`, and `hitrate@10`.
 - **Offline evaluation and benchmarking:** Compare optimized models on held-out data using 15 recommendation quality metrics, and optionally measure prediction latency, throughput, index construction time and memory usage.
 - **Low-latency serving:** An HTTP recommendation service with session management backed by RocksDB.
 - **Ready-to-run binaries:** Windows, Linux, and macOS executables, without requiring Rust or a local build environment.
