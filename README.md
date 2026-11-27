@@ -43,9 +43,9 @@ Building on the original VMIS-kNN research, **we extend Serenade with scalable a
 | **STAN** | [Sequence and Time Aware Neighborhood for Session-based Recommendations: STAN](https://doi.org/10.1145/3331184.3331322) | SIGIR '19 |
 | **VSKNN-STAN (VSTAN)** | [Empirical analysis of session-based recommendation algorithms: A comparison of neural and non-neural approaches](https://doi.org/10.1007/s11257-020-09277-1) | UMUAI '21 |
 
-As described in [Illoominate – Data Shapley Values for Debugging Neighborhood-based Recommender Systems)](https://doi.org/10.1145/3828670), session-based kNN recommendation can be decomposed into two functions: neighbor retrieval ($f_{ret}$) and item scoring ($f_{pred}$).
+As described in our [Scalable Data Debugging for Neighborhood-based Recommendation with Data Shapley Values (Section 3.1)](https://doi.org/10.1145/3705328.3748049), neighborhood-based recommendation can be decomposed into two computational functions: neighbor retrieval ($f_{ret}$) and item scoring ($f_{pred}$).
 
-**Our contribution is to introduce scalable adaptations of established session-based kNN algorithms by leveraging the VMISIndex for neighbor retrieval, while preserving their distinctive similarity and item scoring functions.** Through bounded, recency-ordered indexing and early stopping, neighbor retrieval scales with the length of the active session rather than the size of the historical session corpus, given fixed retrieval limits.
+We demonstrate the generality of this abstraction by extending the scalable retrieval approach of VMIS-kNN to six additional session-based kNN algorithms. By leveraging the shared VMISIndex, these algorithms benefit from efficient neighbor retrieval while preserving their algorithm-specific similarity and item scoring functions. Through bounded, recency-ordered indexing and early stopping, neighbor retrieval scales with the length of the active session rather than the size of the historical session corpus, given fixed retrieval limits.
 
 ## What Serenade offers
 
